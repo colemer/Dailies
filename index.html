@@ -380,7 +380,6 @@ function route() {
 }
 function noticeHtml() {
   if (!store.durable) return `<div class="note"><b>Preview mode.</b> This browser isn't letting Dailies store videos, so anything you add disappears when you close it.</div>`;
-  if (!standalone) return `<div class="note"><b>Add Dailies to your Home Screen.</b> In Safari tap Share, then Add to Home Screen, and open it from that icon.</div>`;
   return '';
 }
 const chip = on => on ? `<span class="chip ok"><i></i>Logged today</span>` : `<span class="chip todo"><i></i>Not logged yet</span>`;
