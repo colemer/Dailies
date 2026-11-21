@@ -377,8 +377,10 @@ const store = {
         const t = this.db.transaction(name, mode);
         const r = fn(t.objectStore(name));
         if (r && 'onsuccess' in r) r.onsuccess = () => { out = r.result; };
+        let why = null;
         t.oncomplete = () => res(out);
-        t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Storage write was stopped'));
+        t.onerror = ev => { why = why || (ev.target && ev.target.error) || t.error; };
+        t.onabort = () => rej(why || t.error || new Error('Storage write was stopped'));
       } catch (e) { rej(e); }
     });
   },
@@ -541,6 +543,28 @@ function startPick(channelId, record) { pending = { channelId }; const inp = rec
   pending.items = files.map(f => ({ name: f.name || '', parts: [{ blob: f, type: f.type || 'video/mp4', duration: 0 }] }));
   openSave();
 }));
+// Big files go to the phone's private file storage (written piece by piece in a worker);
+// everything else is stored as raw bytes in IndexedDB, which iPhone Safari handles reliably.
+const BIG = +(new URLSearchParams(location.search).get('opfs') || 120) * 1e6;
+const opfsDir = () => navigator.storage.getDirectory();
+function opfsWrite(name, blob, onProgress) {
+  return new Promise((res, rej) => {
+    const src = `onmessage = async e => { const { name, blob, chunk } = e.data; let h; try { const dir = await navigator.storage.getDirectory(); const fh = await dir.getFileHandle(name, { create: true }); h = await fh.createSyncAccessHandle(); h.truncate(0); let off = 0; while (off < blob.size) { const buf = new Uint8Array(await blob.slice(off, off + chunk).arrayBuffer()); h.write(buf, { at: off }); off += buf.byteLength; postMessage({ progress: buf.byteLength }); } h.flush(); h.close(); postMessage({ done: true }); } catch (err) { try { h && h.close(); } catch (_) {} postMessage({ error: String((err && err.message) || err) }); } };`;
+    let w, url;
+    const end = (fn, v) => { try { w && w.terminate(); } catch (e) {} if (url) URL.revokeObjectURL(url); fn(v); };
+    try {
+      url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' })); w = new Worker(url);
+      w.onmessage = async ev => {
+        const d = ev.data;
+        if (d.progress) return onProgress(d.progress);
+        if (d.error) return end(rej, new Error(d.error));
+        try { const f = await (await (await opfsDir()).getFileHandle(name)).getFile(); if (f.size !== blob.size) throw new Error('size mismatch'); end(res); } catch (e) { end(rej, e); }
+      };
+      w.onerror = ev => end(rej, new Error(ev.message || 'worker failed'));
+      w.postMessage({ name, blob, chunk: CHUNK });
+    } catch (e) { end(rej, e); }
+  });
+}
 const itemSize = it => it.parts.reduce((n, p) => n + p.blob.size, 0);
 function openSave() {
   const c = chById(pending.channelId), items = pending.items;
@@ -571,7 +595,11 @@ function probe(file) {
     v.src = url;
   });
 }
-async function removeVideo(id) { try { await store.delPrefix('videos', id + ':'); } catch (e) {} try { await store.del('videos', id); } catch (e) {} }
+async function removeVideo(id, nParts) {
+  try { await store.delPrefix('videos', id + ':'); } catch (e) {}
+  try { await store.del('videos', id); } catch (e) {}
+  try { const dir = await opfsDir(); for (let i = 0; i < (nParts || 1); i++) await dir.removeEntry(`${id}_${i}`).catch(() => {}); } catch (e) {}
+}
 $('#formSave').addEventListener('submit', async ev => {
   ev.preventDefault();
   const btn = $('#saveBtn'), err = $('#saveErr');
@@ -584,7 +612,7 @@ $('#formSave').addEventListener('submit', async ev => {
     const free = (est.quota || 0) - (est.usage || 0);
     if (est.quota && total > free) { err.textContent = `This needs ${fmtSize(total)} but Dailies only has about ${fmtSize(Math.max(0, free))} left on this phone. Free up storage, or record with the in-app camera, which makes much smaller files.`; btn.disabled = false; return; }
   } catch (e) {}
-  let written = 0, curId = null;
+  let written = 0, curId = null, curParts = 0;
   try {
     for (let i = 0; i < items.length; i++) {
       const it = items[i], id = curId = uid();
@@ -592,13 +620,19 @@ $('#formSave').addEventListener('submit', async ev => {
       if (!thumb || !known) { const pr = await probe(it.parts[0].blob); thumb = thumb || pr.thumb; if (!known) { it.parts[0].duration = pr.duration; known = pr.duration; } }
       const parts = [];
       for (let p = 0; p < it.parts.length; p++) {
-        const b = it.parts[p].blob; let n = 0;
-        for (let off = 0; off < b.size; off += CHUNK, n++) {
-          await store.put('videos', partKey(id, p) + String(n).padStart(5, '0'), b.slice(off, off + CHUNK, it.parts[p].type));
-          written += Math.min(CHUNK, b.size - off);
-          btn.textContent = `Saving ${Math.min(99, Math.round(written / total * 100))}%`;
+        const b = it.parts[p].blob; let n = 0, kind = 'idb';
+        const tick = add => { written += add; btn.textContent = `Saving ${Math.min(99, Math.round(written / total * 100))}%`; };
+        curParts = p + 1;
+        if (b.size > BIG && store.durable) {
+          const before = written;
+          try { await opfsWrite(`${id}_${p}`, b, tick); kind = 'opfs'; } catch (e) { written = before; }
         }
-        parts.push({ type: it.parts[p].type, size: b.size, chunks: n, duration: it.parts[p].duration || 0 });
+        if (kind === 'idb') for (let off = 0; off < b.size; off += CHUNK, n++) {
+          const buf = await b.slice(off, off + CHUNK).arrayBuffer();
+          await store.put('videos', partKey(id, p) + String(n).padStart(5, '0'), buf);
+          tick(buf.byteLength);
+        }
+        parts.push({ type: it.parts[p].type, size: b.size, chunks: n, kind, duration: it.parts[p].duration || 0 });
       }
       const entry = { id, channelId: pending.channelId, date, createdAt: Date.now() + i, note, duration: known, size: itemSize(it), type: parts[0].type, name: it.name || '', thumb, parts };
       await store.put('entries', id, entry);
@@ -606,9 +640,10 @@ $('#formSave').addEventListener('submit', async ev => {
     }
     $('#dlgSave').close(); state.calMonth = null; route();
   } catch (e) {
-    if (curId) await removeVideo(curId);
+    if (curId) await removeVideo(curId, curParts);
     const full = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
-    err.textContent = (full ? "This phone ran out of space for Dailies while saving. Free up some storage and try again." : "That video couldn't be saved. Try again.") + (e && e.name ? ` (${e.name})` : '');
+    const why = e ? [e.name, e.message].filter(Boolean).join(': ').slice(0, 160) : '';
+    err.textContent = (full ? "This phone ran out of space for Dailies while saving. Free up some storage and try again." : "That video couldn't be saved.") + (why ? ` Reason: ${why}` : ' The phone gave no reason.');
     btn.disabled = false; btn.textContent = 'Try again'; route();
   }
 });
@@ -695,6 +730,7 @@ $('#dlgRec').addEventListener('close', () => {
 let playing = null; // { entry, part, blobs: [], url }
 async function partBlob(e, i) {
   if (!e.parts) { const b = await store.get('videos', e.id); if (!b) throw new Error('missing'); return b; }
+  if (e.parts[i].kind === 'opfs') { const f = await (await (await opfsDir()).getFileHandle(`${e.id}_${i}`)).getFile(); return new Blob([f], { type: e.parts[i].type }); }
   const chunks = await store.getPrefix('videos', partKey(e.id, i));
   if (!chunks.length) throw new Error('missing');
   return new Blob(chunks, { type: e.parts[i].type });
@@ -732,7 +768,7 @@ $('#playDelete').addEventListener('click', async ev => {
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to delete'; return; }
   const e = playing.entry;
   try { await store.del('entries', e.id); } catch (x) { $('#playErr').textContent = "Couldn't delete that clip. Try again."; return; }
-  await removeVideo(e.id);
+  await removeVideo(e.id, e.parts ? e.parts.length : 1);
   state.entries = state.entries.filter(x => x !== e);
   $('#dlgPlay').close(); route();
 });
@@ -781,7 +817,7 @@ $('#chDelete').addEventListener('click', async ev => {
   const b = ev.currentTarget, n = entriesOf(editing.id).length;
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = n ? `Tap again to delete it and its ${n} video${n > 1 ? 's' : ''}` : 'Tap again to delete'; return; }
   const id = editing.id;
-  try { for (const e of entriesOf(id)) { await store.del('entries', e.id); await removeVideo(e.id); } await store.del('channels', id); } catch (e) {}
+  try { for (const e of entriesOf(id)) { await store.del('entries', e.id); await removeVideo(e.id, e.parts ? e.parts.length : 1); } await store.del('channels', id); } catch (e) {}
   state.entries = state.entries.filter(e => e.channelId !== id); state.channels = state.channels.filter(c => c.id !== id);
   $('#dlgChannel').close(); location.hash = '#home'; route();
 });
