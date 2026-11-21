@@ -155,6 +155,7 @@ h1,h2,h3,p{margin:0}
   background:linear-gradient(160deg,color-mix(in srgb,var(--ch) 55%,#0a0a0e) 0%,color-mix(in srgb,var(--ch) 16%,#111116) 70%);border:1px solid color-mix(in srgb,var(--ch) 35%,transparent)}
 .hero::before{content:"";position:absolute;width:220px;height:220px;right:-80px;top:-110px;border-radius:50%;background:var(--ch);opacity:.35;filter:blur(50px)}
 .hero>*{position:relative}
+.hero-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .hero h1{font:700 34px/1.05 var(--display);letter-spacing:-.035em;overflow-wrap:break-word;text-wrap:balance}
 .hero .obj{color:rgba(255,255,255,.8);font-size:16px;overflow-wrap:anywhere}
 .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px}
@@ -177,7 +178,8 @@ h1,h2,h3,p{margin:0}
 .cal-grid .d sup{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;border-radius:9px;background:var(--text);color:var(--bg);font-size:10.5px;line-height:17px;text-align:center}
 .days{display:flex;flex-direction:column;gap:20px}
 .day h3{font:600 14px/1 var(--body);color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between}
-.day h3 span:first-child{color:var(--text)}
+.day h3{align-items:baseline}
+.day h3 .dn{color:var(--text);font:700 22px/1 var(--display);letter-spacing:-.03em}
 .clips{display:flex;flex-direction:column;gap:8px}
 .clip{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:8px;width:100%;text-align:left}
 .thumb{width:76px;aspect-ratio:3/4;border-radius:15px;background:var(--raised) center/cover no-repeat;flex:none;display:grid;place-items:center}
@@ -396,6 +398,12 @@ const state = { channels: [], entries: [], calMonth: null, activeId: null };
 const chById = id => state.channels.find(c => c.id === id);
 const entriesOf = id => state.entries.filter(e => e.channelId === id);
 const daysOf = id => new Set(entriesOf(id).map(e => e.date));
+// Day 1 is the date of a channel's first video; every calendar day after counts, logged or not.
+function dayNum(channelId, dateKey) {
+  const dates = entriesOf(channelId).map(e => e.date); if (!dates.length) return 0;
+  const first = dates.reduce((a, b) => a < b ? a : b);
+  return Math.round((fromKey(dateKey) - fromKey(first)) / 864e5) + 1;
+}
 function streakOf(days) {
   let d = new Date(); if (!days.has(dkey(d))) d = addDays(d, -1);
   let n = 0; while (days.has(dkey(d))) { n++; d = addDays(d, -1); }
@@ -452,7 +460,7 @@ function renderHome() {
       <h3>${esc(c.name)}</h3>
       ${c.objective ? `<p class="obj">${esc(c.objective)}</p>` : ''}
       <div class="week" aria-label="Last 7 days">${week}</div>
-      <div class="slide-foot"><span>${n} video${n === 1 ? '' : 's'} · ${lastLogged(days, tk, yk)}</span><span>Open${I.fwd}</span></div>
+      <div class="slide-foot"><span>${n ? `Day ${dayNum(c.id, tk)} · ` : ''}${n} video${n === 1 ? '' : 's'}</span><span>Open${I.fwd}</span></div>
     </a>`;
   }).join('') + `<button type="button" class="slide add" id="btnAdd"><span class="plus">${I.plus}</span><b>New channel</b><span>Add another thing you're building</span></button>`;
   const dots = [...state.channels, null].map((c, i) => `<button type="button" data-dot="${i}" aria-label="${c ? esc(c.name) : 'New channel'}"><i></i></button>`).join('');
@@ -503,7 +511,7 @@ function renderChannel(c) {
     cells += days.has(k) ? `<a class="${cls}" href="#" data-jump="${k}" aria-label="${d} ${MONTHS[m.getMonth()]}, ${counts[k]} video${counts[k] > 1 ? 's' : ''}">${d}${counts[k] > 1 ? `<sup>${counts[k]}</sup>` : ''}</a>` : `<span class="${cls}">${d}</span>`;
   }
   const groups = []; list.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
-  const daysHtml = groups.map(g => `<section class="day" id="day-${g.date}"><h3><span>${g.date === tk ? 'Today' : g.date === yk ? 'Yesterday' : fmtDay(fromKey(g.date)) + (g.date.slice(0, 4) != today.getFullYear() ? ' ' + g.date.slice(0, 4) : '')}</span><span>${g.items.length} clip${g.items.length > 1 ? 's' : ''}</span></h3><div class="clips">${g.items.map(e => `
+  const daysHtml = groups.map(g => `<section class="day" id="day-${g.date}"><h3><span class="dn">Day ${dayNum(c.id, g.date)}</span><span>${g.date === tk ? 'Today' : g.date === yk ? 'Yesterday' : fmtDay(fromKey(g.date)) + (g.date.slice(0, 4) != today.getFullYear() ? ' ' + g.date.slice(0, 4) : '')} · ${g.items.length} clip${g.items.length > 1 ? 's' : ''}</span></h3><div class="clips">${g.items.map(e => `
       <button type="button" class="clip" data-play="${e.id}">
         <span class="thumb" ${e.thumb ? `style="background-image:url(${e.thumb})"` : ''}>${I.play}</span>
         <span class="clip-meta"><span class="t">${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}</span><span class="n${e.note ? '' : ' none'}">${e.note ? esc(e.note) : 'No note'}</span></span>
@@ -512,7 +520,7 @@ function renderChannel(c) {
   app.innerHTML = `
     <div class="navrow"><a class="iconbtn" href="#home" aria-label="Back to home">${I.back}</a><button class="iconbtn" id="btnEdit" aria-label="Edit channel">${I.edit}</button></div>
     <section class="hero">
-      <div>${chip(days.has(tk))}</div>
+      <div class="hero-top">${chip(days.has(tk))}${list.length ? `<span class="streak">Today is <b>Day ${dayNum(c.id, tk)}</b></span>` : ''}</div>
       <h1>${esc(c.name)}</h1>
       ${c.objective ? `<p class="obj">${esc(c.objective)}</p>` : ''}
       <div class="stats">
@@ -747,7 +755,7 @@ async function openPlay(id) {
   const e = state.entries.find(x => x.id === id); if (!e) return;
   const c = chById(e.channelId), err = $('#playErr'); err.textContent = '';
   const n = e.parts ? e.parts.length : 1;
-  $('#playTitle').textContent = fmtDay(fromKey(e.date));
+  $('#playTitle').textContent = `Day ${dayNum(e.channelId, e.date)} · ${fmtDay(fromKey(e.date))}`;
   $('#playMeta').textContent = `${c ? c.name + ' · ' : ''}${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}${n > 1 ? ` · ${n} parts, played back to back` : ''}`;
   $('#playNote').value = e.note || '';
   const del = $('#playDelete'); del.textContent = 'Delete clip'; del.dataset.armed = '';
