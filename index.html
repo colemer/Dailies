@@ -230,6 +230,28 @@ video{width:100%;max-height:48vh;background:#000;border-radius:22px;display:bloc
   #app>*{animation:rise .35s ease both}
   @keyframes rise{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}
 }
+
+/* in-app camera */
+dialog.rec{max-width:none;width:100%;height:100%;max-height:100%;margin:0;border-radius:0;background:#000;overflow:hidden;animation:none}
+.rec-wrap{position:relative;width:100%;height:100%}
+#recVideo{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:cover;border-radius:0}
+#recVideo.mirror{transform:scaleX(-1)}
+.rec-top{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(env(safe-area-inset-top) + 14px) 16px 30px;background:linear-gradient(rgba(0,0,0,.6),transparent)}
+.rec-top .iconbtn{background:rgba(0,0,0,.45);border:0}
+.rec-sp{width:44px}
+.rec-info{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.rec-info b{font:600 15px/1 var(--display);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#recTime{font:600 14px/1 var(--body);font-variant-numeric:tabular-nums;padding:7px 11px;border-radius:999px;background:rgba(0,0,0,.5);display:inline-flex;align-items:center;gap:7px}
+.rec.live #recTime{background:var(--rec)}
+.rec.live #recTime::before{content:"";width:8px;height:8px;border-radius:50%;background:#fff}
+.rec-msg{position:absolute;left:18px;right:18px;top:38%;text-align:center;font-size:15px;background:rgba(0,0,0,.7);padding:14px;border-radius:18px}
+.rec-msg:empty{display:none}
+.rec-bottom{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;justify-items:center;padding:40px 18px calc(env(safe-area-inset-bottom) + 26px);background:linear-gradient(transparent,rgba(0,0,0,.7))}
+#recGo{width:84px;height:84px;border-radius:50%;border:5px solid #fff;display:grid;place-items:center}
+#recGo i{width:62px;height:62px;border-radius:50%;background:var(--rec);transition:all .2s ease}
+.rec.live #recGo i{width:30px;height:30px;border-radius:8px}
+.rec-side{display:flex;flex-direction:column;align-items:center;gap:6px;font:600 12px/1 var(--body);color:#fff;min-width:76px}
+.rec-side svg{width:26px;height:26px;padding:13px;box-sizing:content-box;border-radius:50%;background:rgba(0,0,0,.45)}
 </style>
 </head>
 <body>
@@ -273,11 +295,28 @@ video{width:100%;max-height:48vh;background:#000;border-radius:22px;display:bloc
   <button class="btn danger ghost wide hide" type="button" id="chDelete">Delete channel</button>
 </form></dialog>
 
+<!-- In-app camera -->
+<dialog id="dlgRec" class="rec"><div class="rec-wrap">
+  <video id="recVideo" playsinline muted autoplay></video>
+  <div class="rec-top">
+    <button type="button" class="iconbtn" id="recClose" aria-label="Close camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="rec-info"><b id="recFor"></b><span id="recTime">0:00 / 10:00</span></div>
+    <span class="rec-sp"></span>
+  </div>
+  <p class="rec-msg" id="recMsg" role="alert"></p>
+  <div class="rec-bottom">
+    <button type="button" class="rec-side" id="recFlip" aria-label="Flip camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 0 1 14.5-3.5L20 7M20 3v4h-4M20 15a8 8 0 0 1-14.5 3.5L4 17M4 21v-4h4"/></svg><span>Flip</span></button>
+    <button type="button" id="recGo" aria-label="Start recording"><i></i></button>
+    <button type="button" class="rec-side" id="recNative"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><span>Phone camera</span></button>
+  </div>
+</div></dialog>
+
 <!-- Settings -->
 <dialog id="dlgSettings"><div class="sheet">
   <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2>Storage and setup</h2><button type="button" class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="rows" id="setRows"></div>
   <p class="small"><b>Your videos live on this phone only.</b> Nothing is uploaded anywhere. Removing Dailies from your Home Screen or clearing website data deletes them, so use Save a copy on any clip you can't lose.</p>
+  <p class="small"><b>How long can a video be?</b> Recording in Dailies stops itself at 10:00 and makes small files. Uploads from your camera roll have no time limit; they only need to fit in the space shown above.</p>
   <p class="small" id="setInstall"><b>Put it on your Home Screen:</b> in Safari tap Share, then Add to Home Screen. Open Dailies from that icon from then on, so your videos stay in one place.</p>
   <p class="small"><b>Daily nudge:</b> the ring on the home screen shows what's missing today. For a ping at a set time, add a repeating reminder in the Reminders or Clock app.</p>
 </div></dialog>
@@ -346,7 +385,9 @@ const store = {
   all(name) { return this.db ? this.tx(name, 'readonly', s => s.getAll()) : Promise.resolve([...this.mem[name].values()]); },
   get(name, key) { return this.db ? this.tx(name, 'readonly', s => s.get(key)) : Promise.resolve(this.mem[name].get(key)); },
   put(name, key, val) { return this.db ? this.tx(name, 'readwrite', s => { s.put(val, key); }) : Promise.resolve(void this.mem[name].set(key, val)); },
-  del(name, key) { return this.db ? this.tx(name, 'readwrite', s => { s.delete(key); }) : Promise.resolve(void this.mem[name].delete(key)); }
+  del(name, key) { return this.db ? this.tx(name, 'readwrite', s => { s.delete(key); }) : Promise.resolve(void this.mem[name].delete(key)); },
+  getPrefix(name, pre) { return this.db ? this.tx(name, 'readonly', s => s.getAll(IDBKeyRange.bound(pre, pre + '\uffff'))) : Promise.resolve([...this.mem[name].keys()].filter(k => String(k).startsWith(pre)).sort().map(k => this.mem[name].get(k))); },
+  delPrefix(name, pre) { return this.db ? this.tx(name, 'readwrite', s => { s.delete(IDBKeyRange.bound(pre, pre + '\uffff')); }) : Promise.resolve(void [...this.mem[name].keys()].filter(k => String(k).startsWith(pre)).forEach(k => this.mem[name].delete(k))); }
 };
 
 const state = { channels: [], entries: [], calMonth: null, activeId: null };
@@ -486,24 +527,35 @@ function renderChannel(c) {
 }
 
 /* ---------- picking and saving videos ---------- */
-let pending = null; // { channelId, files, url }
+// pending = { channelId, items: [{ parts: [{ blob, type, duration }], thumb?, name? }], limitNote?, url? }
+let pending = null;
+const CHUNK = 4 * 1024 * 1024; // videos are stored in 4 MB pieces so large files save reliably
+const pad2 = n => String(n).padStart(2, '0');
+const partKey = (id, p) => `${id}:${pad2(p)}:`;
+const fmtClock = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 const pickRecord = $('#pickRecord'), pickUpload = $('#pickUpload');
 function startPick(channelId, record) { pending = { channelId }; const inp = record ? pickRecord : pickUpload; inp.value = ''; inp.click(); }
 [pickRecord, pickUpload].forEach(inp => inp.addEventListener('change', () => {
   const files = [...inp.files].filter(f => !f.type || f.type.startsWith('video/'));
   if (!files.length || !pending) return;
-  pending.files = files; openSave();
+  pending.items = files.map(f => ({ name: f.name || '', parts: [{ blob: f, type: f.type || 'video/mp4', duration: 0 }] }));
+  openSave();
 }));
+const itemSize = it => it.parts.reduce((n, p) => n + p.blob.size, 0);
 function openSave() {
-  const c = chById(pending.channelId), files = pending.files;
+  const c = chById(pending.channelId), items = pending.items;
   $('#saveTitle').textContent = `Save to ${c.name}`;
-  pending.url = URL.createObjectURL(files[0]);
+  pending.url = URL.createObjectURL(items[0].parts[0].blob);
   const v = $('#savePreview'); v.src = pending.url;
-  const size = files.reduce((n, f) => n + f.size, 0);
-  $('#saveMeta').textContent = files.length > 1 ? `${files.length} videos · ${fmtSize(size)} · showing the first` : `${fmtSize(size)}`;
+  const size = items.reduce((n, it) => n + itemSize(it), 0);
+  const dur = items[0].parts.reduce((n, p) => n + (p.duration || 0), 0);
+  let meta = items.length > 1 ? `${items.length} videos · ${fmtSize(size)} · showing the first` : `${dur ? fmtDur(dur) + ' · ' : ''}${fmtSize(size)}`;
+  if (items.length === 1 && items[0].parts.length > 1) meta += ` · ${items[0].parts.length} parts (camera flipped), showing the first`;
+  if (pending.limitNote) meta += ` · stopped at the ${fmtClock(REC_MAX)} limit`;
+  $('#saveMeta').textContent = meta;
   const d = $('#saveDate'); d.max = dkey(); d.value = dkey();
   $('#saveNote').value = ''; $('#saveErr').textContent = '';
-  const b = $('#saveBtn'); b.disabled = false; b.textContent = files.length > 1 ? `Save ${files.length} videos` : 'Save to channel';
+  const b = $('#saveBtn'); b.disabled = false; b.textContent = items.length > 1 ? `Save ${items.length} videos` : 'Save to channel';
   $('#dlgSave').showModal();
 }
 function probe(file) {
@@ -519,51 +571,155 @@ function probe(file) {
     v.src = url;
   });
 }
+async function removeVideo(id) { try { await store.delPrefix('videos', id + ':'); } catch (e) {} try { await store.del('videos', id); } catch (e) {} }
 $('#formSave').addEventListener('submit', async ev => {
   ev.preventDefault();
   const btn = $('#saveBtn'), err = $('#saveErr');
   const date = $('#saveDate').value, note = $('#saveNote').value.trim();
   if (!date || date > dkey()) { err.textContent = 'Pick today or an earlier day.'; return; }
   btn.disabled = true; err.textContent = '';
-  const files = pending.files;
+  const items = pending.items, total = items.reduce((n, it) => n + itemSize(it), 0);
   try {
-    for (let i = 0; i < files.length; i++) {
-      btn.textContent = files.length > 1 ? `Saving ${i + 1} of ${files.length}…` : 'Saving…';
-      const f = files[i], id = uid();
-      const { duration, thumb } = await probe(f);
-      await store.put('videos', id, f);
-      const entry = { id, channelId: pending.channelId, date, createdAt: Date.now() + i, note, duration, size: f.size, type: f.type || 'video/mp4', name: f.name || '', thumb };
+    const est = await navigator.storage.estimate();
+    const free = (est.quota || 0) - (est.usage || 0);
+    if (est.quota && total > free) { err.textContent = `This needs ${fmtSize(total)} but Dailies only has about ${fmtSize(Math.max(0, free))} left on this phone. Free up storage, or record with the in-app camera, which makes much smaller files.`; btn.disabled = false; return; }
+  } catch (e) {}
+  let written = 0, curId = null;
+  try {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i], id = curId = uid();
+      let thumb = it.thumb || '', known = it.parts.reduce((n, p) => n + (p.duration || 0), 0);
+      if (!thumb || !known) { const pr = await probe(it.parts[0].blob); thumb = thumb || pr.thumb; if (!known) { it.parts[0].duration = pr.duration; known = pr.duration; } }
+      const parts = [];
+      for (let p = 0; p < it.parts.length; p++) {
+        const b = it.parts[p].blob; let n = 0;
+        for (let off = 0; off < b.size; off += CHUNK, n++) {
+          await store.put('videos', partKey(id, p) + String(n).padStart(5, '0'), b.slice(off, off + CHUNK, it.parts[p].type));
+          written += Math.min(CHUNK, b.size - off);
+          btn.textContent = `Saving ${Math.min(99, Math.round(written / total * 100))}%`;
+        }
+        parts.push({ type: it.parts[p].type, size: b.size, chunks: n, duration: it.parts[p].duration || 0 });
+      }
+      const entry = { id, channelId: pending.channelId, date, createdAt: Date.now() + i, note, duration: known, size: itemSize(it), type: parts[0].type, name: it.name || '', thumb, parts };
       await store.put('entries', id, entry);
-      state.entries.push(entry);
+      state.entries.push(entry); curId = null;
     }
-    closeSave(); $('#dlgSave').close(); state.calMonth = null; route();
+    $('#dlgSave').close(); state.calMonth = null; route();
   } catch (e) {
+    if (curId) await removeVideo(curId);
     const full = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
-    err.textContent = full ? "There isn't enough free space on this phone to save that video. Free up some storage and try again." : "That video couldn't be saved. Try again, or try a shorter clip.";
+    err.textContent = (full ? "This phone ran out of space for Dailies while saving. Free up some storage and try again." : "That video couldn't be saved. Try again.") + (e && e.name ? ` (${e.name})` : '');
     btn.disabled = false; btn.textContent = 'Try again'; route();
   }
 });
 function closeSave() { const v = $('#savePreview'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} if (pending && pending.url) URL.revokeObjectURL(pending.url); }
 $('#dlgSave').addEventListener('close', () => { closeSave(); pending = null; });
 
+/* ---------- in-app camera ---------- */
+const REC_MAX = 600; // seconds: recording stops itself at 10:00
+const rec = { stream: null, mr: null, facing: 'user', parts: [], chunks: [], segStart: 0, elapsed: 0, timer: 0, on: false, paused: false, thumb: '', channelId: null, busy: false };
+const canRecord = () => !inFrame && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+function recMime() { for (const t of ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']) { try { if (MediaRecorder.isTypeSupported(t)) return t; } catch (e) {} } return ''; }
+function recStopStream() { if (rec.stream) { rec.stream.getTracks().forEach(t => t.stop()); rec.stream = null; } }
+async function recStream() {
+  recStopStream();
+  rec.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: rec.facing, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true });
+  const v = $('#recVideo'); v.srcObject = rec.stream; v.classList.toggle('mirror', rec.facing === 'user'); try { await v.play(); } catch (e) {}
+}
+function recUI() {
+  const total = rec.elapsed + (rec.on && !rec.paused ? (Date.now() - rec.segStart) / 1000 : 0);
+  $('#recTime').textContent = `${fmtClock(total)} / ${fmtClock(REC_MAX)}`;
+  $('#dlgRec').classList.toggle('live', rec.on);
+  $('#recGo').setAttribute('aria-label', rec.on ? 'Stop recording' : 'Start recording');
+  $('#recNative').classList.toggle('hide', rec.on);
+  return total;
+}
+function snap(v) { try { const w = 320, h = Math.round(w * v.videoHeight / v.videoWidth) || 426; const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(v, 0, 0, w, h); return cv.toDataURL('image/jpeg', 0.7); } catch (e) { return ''; } }
+function segStart() {
+  const mime = recMime(); rec.chunks = [];
+  const mr = rec.mr = new MediaRecorder(rec.stream, Object.assign({ videoBitsPerSecond: 2500000, audioBitsPerSecond: 128000 }, mime ? { mimeType: mime } : {}));
+  mr.ondataavailable = e => { if (e.data && e.data.size) rec.chunks.push(e.data); };
+  mr.start(1000); rec.segStart = Date.now();
+}
+function segStop() {
+  return new Promise(res => {
+    const mr = rec.mr; if (!mr || mr.state === 'inactive') return res();
+    const dur = (Date.now() - rec.segStart) / 1000;
+    mr.onstop = () => { const type = (mr.mimeType || 'video/mp4').split(';')[0] || 'video/mp4'; const blob = new Blob(rec.chunks, { type }); if (blob.size) rec.parts.push({ blob, type, duration: dur }); rec.elapsed += dur; rec.chunks = []; rec.mr = null; res(); };
+    try { mr.stop(); } catch (e) { res(); }
+  });
+}
+async function openRecorder(channelId) {
+  const c = chById(channelId);
+  Object.assign(rec, { parts: [], elapsed: 0, on: false, paused: false, thumb: '', channelId, facing: 'user', busy: false });
+  $('#recFor').textContent = c.name; $('#recMsg').textContent = ''; recUI();
+  $('#dlgRec').showModal();
+  try { await recStream(); }
+  catch (e) { $('#recMsg').textContent = e && e.name === 'NotAllowedError' ? "Dailies isn't allowed to use the camera and microphone. Allow them in Settings, or tap Phone camera below." : "The in-app camera couldn't start. Tap Phone camera below instead."; }
+}
+async function finishRec(hitLimit) {
+  if (rec.busy) return; rec.busy = true;
+  clearInterval(rec.timer); await segStop(); rec.on = false;
+  const parts = rec.parts, thumb = rec.thumb, channelId = rec.channelId;
+  rec.parts = []; $('#dlgRec').close();
+  if (!parts.length) return;
+  pending = { channelId, items: [{ parts, thumb }], limitNote: !!hitLimit };
+  openSave();
+}
+$('#recGo').addEventListener('click', () => {
+  if (rec.busy) return;
+  if (!rec.stream) { $('#recMsg').textContent = "The camera isn't on yet. Tap Phone camera below instead."; return; }
+  if (rec.on) return finishRec(false);
+  try { rec.thumb = rec.thumb || snap($('#recVideo')); segStart(); } catch (e) { $('#recMsg').textContent = "Recording couldn't start here. Tap Phone camera below instead."; return; }
+  rec.on = true; $('#recMsg').textContent = '';
+  rec.timer = setInterval(() => { if (recUI() >= REC_MAX) finishRec(true); }, 250); recUI();
+});
+$('#recFlip').addEventListener('click', async () => {
+  if (rec.busy) return; rec.busy = true;
+  const was = rec.on;
+  if (was) { rec.paused = true; await segStop(); }
+  rec.facing = rec.facing === 'user' ? 'environment' : 'user';
+  try { await recStream(); if (was) segStart(); }
+  catch (e) { $('#recMsg').textContent = "Couldn't switch cameras."; rec.facing = rec.facing === 'user' ? 'environment' : 'user'; try { await recStream(); if (was) segStart(); } catch (x) {} }
+  rec.paused = false; rec.busy = false;
+});
+$('#recNative').addEventListener('click', () => { const id = rec.channelId; $('#dlgRec').close(); startPick(id, true); });
+$('#recClose').addEventListener('click', () => $('#dlgRec').close());
+$('#dlgRec').addEventListener('close', () => {
+  clearInterval(rec.timer); rec.on = false;
+  if (rec.mr && rec.mr.state !== 'inactive') { rec.mr.onstop = null; try { rec.mr.stop(); } catch (e) {} }
+  rec.mr = null; recStopStream(); $('#recVideo').srcObject = null; $('#dlgRec').classList.remove('live');
+});
+
 /* ---------- player ---------- */
-let playing = null; // { entry, url, blob }
+let playing = null; // { entry, part, blobs: [], url }
+async function partBlob(e, i) {
+  if (!e.parts) { const b = await store.get('videos', e.id); if (!b) throw new Error('missing'); return b; }
+  const chunks = await store.getPrefix('videos', partKey(e.id, i));
+  if (!chunks.length) throw new Error('missing');
+  return new Blob(chunks, { type: e.parts[i].type });
+}
+async function loadPart(i, autoplay) {
+  const p = playing, e = p.entry;
+  if (!p.blobs[i]) p.blobs[i] = await partBlob(e, i);
+  if (playing !== p) return;
+  if (p.url) URL.revokeObjectURL(p.url);
+  p.part = i; p.url = URL.createObjectURL(p.blobs[i]);
+  const v = $('#playVideo'); v.src = p.url; if (autoplay) v.play().catch(() => {});
+}
 async function openPlay(id) {
   const e = state.entries.find(x => x.id === id); if (!e) return;
   const c = chById(e.channelId), err = $('#playErr'); err.textContent = '';
+  const n = e.parts ? e.parts.length : 1;
   $('#playTitle').textContent = fmtDay(fromKey(e.date));
-  $('#playMeta').textContent = `${c ? c.name + ' · ' : ''}${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}`;
+  $('#playMeta').textContent = `${c ? c.name + ' · ' : ''}${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}${n > 1 ? ` · ${n} parts, played back to back` : ''}`;
   $('#playNote').value = e.note || '';
   const del = $('#playDelete'); del.textContent = 'Delete clip'; del.dataset.armed = '';
-  playing = { entry: e };
+  playing = { entry: e, part: 0, blobs: [] };
   $('#dlgPlay').showModal();
-  try {
-    const blob = await store.get('videos', id);
-    if (!blob) throw new Error('missing');
-    playing.blob = blob; playing.url = URL.createObjectURL(blob);
-    $('#playVideo').src = playing.url;
-  } catch (x) { err.textContent = "This clip's video file isn't on this device anymore."; }
+  try { await loadPart(0, false); } catch (x) { err.textContent = "This clip's video file isn't on this device anymore."; }
 }
+$('#playVideo').addEventListener('ended', () => { if (playing && playing.entry.parts && playing.part + 1 < playing.entry.parts.length) loadPart(playing.part + 1, true).catch(() => {}); });
 $('#dlgPlay').addEventListener('close', async () => {
   const v = $('#playVideo'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {}
   if (!playing) return;
@@ -575,21 +731,28 @@ $('#playDelete').addEventListener('click', async ev => {
   const b = ev.currentTarget;
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to delete'; return; }
   const e = playing.entry;
-  try { await store.del('videos', e.id); await store.del('entries', e.id); } catch (x) { $('#playErr').textContent = "Couldn't delete that clip. Try again."; return; }
+  try { await store.del('entries', e.id); } catch (x) { $('#playErr').textContent = "Couldn't delete that clip. Try again."; return; }
+  await removeVideo(e.id);
   state.entries = state.entries.filter(x => x !== e);
   $('#dlgPlay').close(); route();
 });
 $('#playShare').addEventListener('click', async () => {
   const err = $('#playErr'); err.textContent = '';
-  if (!playing || !playing.blob) return;
-  const e = playing.entry, ext = (e.name && e.name.includes('.')) ? e.name.split('.').pop() : (e.type.includes('quicktime') ? 'mov' : e.type.includes('webm') ? 'webm' : 'mp4');
-  const c = chById(e.channelId), fname = `${(c ? c.name : 'dailies').replace(/[^a-z0-9]+/gi, '-')}-${e.date}.${ext}`;
+  if (!playing) return;
+  const p = playing, e = p.entry, n = e.parts ? e.parts.length : 1;
+  const c = chById(e.channelId), base = `${(c ? c.name : 'dailies').replace(/[^a-z0-9]+/gi, '-')}-${e.date}`;
   try {
-    const file = new File([playing.blob], fname, { type: e.type });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
     if (inFrame) throw new Error('preview');
-    const a = document.createElement('a'); a.href = playing.url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
-  } catch (x) { if (x && x.name === 'AbortError') return; err.textContent = "Saving a copy isn't available in this view. Open Dailies from your Home Screen and try again."; }
+    const files = [];
+    for (let i = 0; i < n; i++) {
+      if (!p.blobs[i]) p.blobs[i] = await partBlob(e, i);
+      const type = e.parts ? e.parts[i].type : e.type;
+      const ext = (e.name && e.name.includes('.')) ? e.name.split('.').pop() : (type.includes('quicktime') ? 'mov' : type.includes('webm') ? 'webm' : 'mp4');
+      files.push(new File([p.blobs[i]], `${base}${n > 1 ? '-part' + (i + 1) : ''}.${ext}`, { type }));
+    }
+    if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files }); return; }
+    for (const f of files) { const u = URL.createObjectURL(f), a = document.createElement('a'); a.href = u; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); }
+  } catch (x) { if (x && x.name === 'AbortError') return; err.textContent = "Saving a copy didn't work here. Open Dailies from your Home Screen and try again."; }
 });
 
 /* ---------- channels ---------- */
@@ -618,7 +781,7 @@ $('#chDelete').addEventListener('click', async ev => {
   const b = ev.currentTarget, n = entriesOf(editing.id).length;
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = n ? `Tap again to delete it and its ${n} video${n > 1 ? 's' : ''}` : 'Tap again to delete'; return; }
   const id = editing.id;
-  try { for (const e of entriesOf(id)) { await store.del('videos', e.id); await store.del('entries', e.id); } await store.del('channels', id); } catch (e) {}
+  try { for (const e of entriesOf(id)) { await store.del('entries', e.id); await removeVideo(e.id); } await store.del('channels', id); } catch (e) {}
   state.entries = state.entries.filter(e => e.channelId !== id); state.channels = state.channels.filter(c => c.id !== id);
   $('#dlgChannel').close(); location.hash = '#home'; route();
 });
@@ -641,7 +804,7 @@ async function openSettings() {
 document.addEventListener('click', ev => {
   const t = ev.target.closest('[data-play],[data-close],[data-jump],#btnAdd,#btnEdit,#btnSettings,#calPrev,#calNext,#dockRec,#dockUp,.slide[data-ch]');
   if (!t) return;
-  if (t.id === 'dockRec') return dockChannel ? startPick(dockChannel, true) : openChannel(null);
+  if (t.id === 'dockRec') return dockChannel ? (canRecord() ? openRecorder(dockChannel) : startPick(dockChannel, true)) : openChannel(null);
   if (t.id === 'dockUp') return dockChannel && startPick(dockChannel, false);
   if (t.dataset.ch && !t.classList.contains('active')) { ev.preventDefault(); t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); return; }
   if (t.dataset.play) return openPlay(t.dataset.play);
