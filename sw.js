@@ -1,6 +1,6 @@
 // Dailies service worker: keeps the app itself available offline.
 // Videos are not cached here; they live in the phone's IndexedDB.
-const CACHE = 'dailies-shell-v6';
+const CACHE = 'dailies-shell-v7';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
