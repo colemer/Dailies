@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dailies</title>
+<meta name="theme-color" content="#0a0a0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dailies">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one home screen you drive with your thumb. Swipe sideways through
+   channel cards; the dock's Record button always belongs to the card in front.
+   Single dark theme by choice, so each channel's color does the talking. */
+:root{
+  color-scheme: dark;
+  --bg:#0a0a0e;
+  --surface:#15151b;
+  --raised:#20202a;
+  --line:rgba(255,255,255,.09);
+  --text:#f6f6f8;
+  --muted:#9292a0;
+  --rec:#ff4d5e;        /* accent: record */
+  --ok:#3ddc97;         /* semantic: logged */
+  --todo:#ffb547;       /* semantic: still to log */
+  --display:"Sora",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --r:26px;
+  --ch:#ff4d5e;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 var(--body);-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;-webkit-font-smoothing:antialiased}
+#app{
+  max-width:560px;margin:0 auto;min-height:100%;
+  padding:calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 128px);
+  display:flex;flex-direction:column;gap:22px;
+}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0;touch-action:manipulation}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--text);outline-offset:3px;border-radius:10px}
+h1,h2,h3,p{margin:0}
+#app>*{min-width:0;max-width:100%}
+#app>.carousel,#app>.reel{max-width:none}
+.lbl{font:600 13px/1 var(--body);color:var(--muted)}
+.hide{display:none!important}
+@media (prefers-reduced-motion:no-preference){
+  button,.slide,.clip,.tile{transition:transform .18s ease,opacity .25s ease}
+  button:active,.clip:active,.tile:active{transform:scale(.96)}
+}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.top .when{color:var(--muted);font-size:15px;font-weight:500}
+.top h1{font:700 36px/1.05 var(--display);letter-spacing:-.03em;margin-top:4px}
+.iconbtn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);flex:none}
+.iconbtn svg{width:20px;height:20px}
+.navrow{display:flex;justify-content:space-between;align-items:center}
+
+/* today summary */
+.today{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.ring{width:68px;height:68px;flex:none;position:relative;display:grid;place-items:center}
+.ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:7;stroke-linecap:round}
+.ring .track{stroke:var(--raised)}
+.ring .bar{stroke:var(--ok);transition:stroke-dashoffset .6s ease}
+.ring.todo .bar{stroke:var(--todo)}
+.ring b{font:700 19px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.ring b small{font-size:13px;color:var(--muted);font-weight:600}
+.today-txt{min-width:0;display:flex;flex-direction:column;gap:4px}
+.today-txt strong{font:600 17px/1.25 var(--display);letter-spacing:-.01em}
+.today-txt span{color:var(--muted);font-size:14.5px;overflow-wrap:anywhere}
+
+.note{border-radius:18px;padding:12px 14px;font-size:14px;color:var(--muted);background:var(--surface);border:1px solid var(--line)}
+.note b{color:var(--text);font-weight:600}
+
+/* swipeable channel cards */
+.sect{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:-8px}
+.sect h2{font:600 19px/1 var(--display);letter-spacing:-.02em}
+.sect span{color:var(--muted);font-size:14px}
+.carousel{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -18px;padding:4px 18px 6px;scroll-padding:0 18px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.carousel::-webkit-scrollbar{display:none}
+.slide{flex:0 0 84%;max-width:400px;scroll-snap-align:center;scroll-snap-stop:always;border-radius:30px;min-height:330px;padding:20px;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--ch) 62%,#0a0a0e) 0%,color-mix(in srgb,var(--ch) 20%,#111116) 62%,#131318 100%);
+  border:1px solid color-mix(in srgb,var(--ch) 35%,transparent);opacity:.5;transform:scale(.95)}
+.slide::before{content:"";position:absolute;width:240px;height:240px;right:-90px;top:-110px;border-radius:50%;background:var(--ch);opacity:.35;filter:blur(50px);pointer-events:none}
+.slide.active{opacity:1;transform:none}
+.slide>*{position:relative}
+.slide-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.chip{font:600 13px/1 var(--body);padding:8px 11px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--todo)}
+.chip.ok i{background:var(--ok)}
+.chip.ok{color:var(--ok)}
+.chip.todo{color:var(--todo)}
+.streak{font:600 14px/1 var(--body);color:rgba(255,255,255,.82);white-space:nowrap}
+.streak b{font:700 16px/1 var(--display);color:#fff}
+.slide h3{font:700 32px/1.05 var(--display);letter-spacing:-.035em;overflow-wrap:break-word;margin-top:auto}
+.slide .obj{color:rgba(255,255,255,.78);font-size:15.5px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:4px}
+.week span{aspect-ratio:1;max-width:40px;width:100%;justify-self:center;border-radius:50%;display:grid;place-items:center;font:600 12.5px/1 var(--body);color:rgba(255,255,255,.6);background:rgba(255,255,255,.09)}
+.week .on{background:#fff;color:#0a0a0e}
+.week .now{box-shadow:0 0 0 2px rgba(255,255,255,.75)}
+.slide-foot{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:rgba(255,255,255,.7)}
+.slide-foot svg{width:16px;height:16px}
+.slide-foot span:last-child{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:#fff}
+.slide.add{background:var(--surface);border:1.5px dashed rgba(255,255,255,.18);align-items:center;justify-content:center;text-align:center;color:var(--muted);gap:10px;width:auto}
+.slide.add::before{display:none}
+.slide.add .plus{width:60px;height:60px;border-radius:50%;background:var(--raised);display:grid;place-items:center;color:var(--text)}
+.slide.add .plus svg{width:26px;height:26px}
+.slide.add b{font:600 19px/1.2 var(--display);color:var(--text);letter-spacing:-.02em}
+.pager{display:flex;justify-content:center;gap:7px;margin-top:-10px}
+.pager button{width:22px;height:22px;display:grid;place-items:center}
+.pager i{width:7px;height:7px;border-radius:999px;background:var(--raised);transition:width .25s ease,background .25s ease}
+.pager .active i{width:20px;background:var(--text)}
+
+/* latest clips row */
+.reel{display:flex;gap:10px;overflow-x:auto;margin:0 -18px;padding:0 18px;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding:0 18px}
+.reel::-webkit-scrollbar{display:none}
+.tile{flex:0 0 124px;aspect-ratio:3/4;border-radius:20px;background:var(--raised) center/cover no-repeat;position:relative;overflow:hidden;scroll-snap-align:start;text-align:left;display:block}
+.tile::after{content:"";position:absolute;inset:40% 0 0;background:linear-gradient(transparent,rgba(0,0,0,.78))}
+.tile span{position:absolute;left:10px;right:10px;bottom:10px;z-index:1;display:flex;flex-direction:column;gap:3px;font-size:12.5px;line-height:1.2;color:rgba(255,255,255,.8)}
+.tile span b{font-weight:600;color:#fff;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile span b i{width:7px;height:7px;border-radius:50%;background:var(--ch);flex:none}
+.tile .dur{position:absolute;top:9px;right:9px;font:600 11.5px/1 var(--body);background:rgba(0,0,0,.5);padding:5px 7px;border-radius:999px;font-variant-numeric:tabular-nums}
+.empty{border-radius:var(--r);padding:26px 20px;text-align:center;color:var(--muted);font-size:15px;background:var(--surface);border:1px solid var(--line)}
+.empty b{display:block;color:var(--text);font:600 18px/1.2 var(--display);letter-spacing:-.02em;margin-bottom:6px}
+
+/* dock */
+#dock{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:14px 18px calc(env(safe-area-inset-bottom) + 16px);background:linear-gradient(transparent,var(--bg) 42%);pointer-events:none}
+.dock-in{max-width:524px;margin:0 auto;display:flex;gap:10px;pointer-events:auto}
+#dockRec{flex:1;height:64px;border-radius:999px;background:var(--rec);color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;box-shadow:0 12px 32px -8px rgba(255,77,94,.6);min-width:0;padding:0 20px}
+#dockRec .lens{width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;display:grid;place-items:center;flex:none}
+#dockRec .lens::after{content:"";width:12px;height:12px;border-radius:50%;background:#fff}
+#dockRec .lens.plus{border:0}
+#dockRec .lens.plus::after{display:none}
+#dockRec .lens svg{width:24px;height:24px}
+#dockRec span{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+#dockRec b{font:700 17px/1 var(--display);letter-spacing:-.01em}
+#dockRec small{font-size:12.5px;line-height:1;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#dockRec.neutral{background:var(--text);color:var(--bg);box-shadow:none}
+#dockUp{width:64px;height:64px;border-radius:50%;background:rgba(32,32,42,.86);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:600 10.5px/1 var(--body);color:var(--muted);flex:none}
+#dockUp svg{width:20px;height:20px;color:var(--text)}
+
+/* channel page */
+.hero{border-radius:30px;padding:22px 20px;display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--ch) 55%,#0a0a0e) 0%,color-mix(in srgb,var(--ch) 16%,#111116) 70%);border:1px solid color-mix(in srgb,var(--ch) 35%,transparent)}
+.hero::before{content:"";position:absolute;width:220px;height:220px;right:-80px;top:-110px;border-radius:50%;background:var(--ch);opacity:.35;filter:blur(50px)}
+.hero>*{position:relative}
+.hero h1{font:700 34px/1.05 var(--display);letter-spacing:-.035em;overflow-wrap:break-word;text-wrap:balance}
+.hero .obj{color:rgba(255,255,255,.8);font-size:16px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px}
+.stats div{background:rgba(0,0,0,.28);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.stats strong{font:700 24px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stats span{font-size:12.5px;color:rgba(255,255,255,.7)}
+.cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-head h3{font:600 17px/1 var(--display);letter-spacing:-.01em}
+.cal-head button{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--raised)}
+.cal-head button svg{width:16px;height:16px}
+.cal-head button[disabled]{opacity:.3}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal-grid .wd{font:600 12px/1 var(--body);color:var(--muted);text-align:center;padding-bottom:4px}
+.cal-grid .d{aspect-ratio:1;width:100%;max-width:42px;height:auto;justify-self:center;align-self:center;border-radius:50%;display:grid;place-items:center;font:600 14.5px/1 var(--body);font-variant-numeric:tabular-nums;color:var(--muted);position:relative}
+.cal-grid .d.on{background:var(--ch);color:#0a0a0e}
+.cal-grid .d.today{box-shadow:inset 0 0 0 2px var(--text);color:var(--text)}
+.cal-grid .d.on.today{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--text);color:#0a0a0e}
+.cal-grid .d.future{opacity:.3}
+.cal-grid .d sup{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;border-radius:9px;background:var(--text);color:var(--bg);font-size:10.5px;display:grid;place-items:center}
+.days{display:flex;flex-direction:column;gap:20px}
+.day h3{font:600 14px/1 var(--body);color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between}
+.day h3 span:first-child{color:var(--text)}
+.clips{display:flex;flex-direction:column;gap:8px}
+.clip{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:8px;width:100%;text-align:left}
+.thumb{width:76px;aspect-ratio:3/4;border-radius:15px;background:var(--raised) center/cover no-repeat;flex:none;display:grid;place-items:center}
+.thumb svg{width:24px;height:24px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.7))}
+.clip-meta{min-width:0;display:flex;flex-direction:column;gap:6px;flex:1;padding-right:8px}
+.clip-meta .t{font:500 13px/1 var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
+.clip-meta .n{font-size:15.5px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.clip-meta .n.none{color:var(--muted)}
+
+/* buttons and sheets */
+.btn{height:54px;padding:0 20px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font:600 16px/1 var(--body);background:var(--raised)}
+.btn.primary{background:var(--text);color:var(--bg)}
+.btn.ghost{background:none}
+.btn.danger{color:var(--rec)}
+.btn.wide{width:100%}
+.btn[disabled]{opacity:.5}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+dialog{border:0;padding:0;margin:auto auto 0;width:100%;max-width:560px;max-height:94%;background:var(--surface);color:var(--text);border-radius:32px 32px 0 0;overflow:auto;box-shadow:0 -1px 0 var(--line)}
+dialog::backdrop{background:rgba(4,4,8,.66);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.sheet{padding:0 18px calc(env(safe-area-inset-bottom) + 22px);display:flex;flex-direction:column;gap:16px}
+.grab{padding:10px 0 2px;display:grid;place-items:center;touch-action:none}
+.grab::after{content:"";width:40px;height:5px;border-radius:3px;background:rgba(255,255,255,.22)}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px;touch-action:none}
+.sheet-head h2{font:700 22px/1.1 var(--display);letter-spacing:-.025em;overflow-wrap:anywhere}
+.sheet-head .iconbtn{background:var(--raised);border:0}
+.field{display:flex;flex-direction:column;gap:8px}
+.field input,.field textarea{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:14px;width:100%;font-size:16px}
+.field input:focus,.field textarea:focus{outline:none;border-color:rgba(255,255,255,.4)}
+.field textarea{min-height:80px;resize:none}
+.field input[type=date]{min-height:52px;-webkit-appearance:none;appearance:none}
+.swatches{display:flex;gap:12px;flex-wrap:wrap}
+.swatches label{position:relative}
+.swatches input{position:absolute;opacity:0;inset:0}
+.swatches span{display:block;width:42px;height:42px;border-radius:50%;background:var(--c);border:3px solid var(--surface)}
+.swatches input:checked+span{box-shadow:0 0 0 2.5px var(--text)}
+.swatches input:focus-visible+span{box-shadow:0 0 0 2.5px var(--text),0 0 0 6px var(--line)}
+video{width:100%;max-height:48vh;background:#000;border-radius:22px;display:block}
+.meta-row{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.err{color:var(--rec);font-size:14px}
+.err:empty{display:none}
+.rows{display:flex;flex-direction:column;background:var(--bg);border-radius:20px}
+.rows>div{padding:14px 16px;display:flex;justify-content:space-between;gap:14px;font-size:15px}
+.rows>div+div{border-top:1px solid var(--line)}
+.rows span:last-child{color:var(--muted);text-align:right}
+.small{font-size:14px;color:var(--muted)}
+.small b{color:var(--text);font-weight:600}
+@media (prefers-reduced-motion:no-preference){
+  dialog[open]{animation:up .28s cubic-bezier(.2,.9,.3,1)}
+  @keyframes up{from{transform:translateY(60px);opacity:.3}to{transform:none;opacity:1}}
+  #app>*{animation:rise .35s ease both}
+  @keyframes rise{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}
+}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav id="dock" aria-label="Add a video"><div class="dock-in"><button type="button" id="dockUp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>Upload</button><button type="button" id="dockRec"></button></div></nav>
+
+<input type="file" id="pickRecord" accept="video/*" capture="user" class="hide">
+<input type="file" id="pickUpload" accept="video/*" multiple class="hide">
+
+<!-- Save a new video -->
+<dialog id="dlgSave"><form class="sheet" id="formSave">
+  <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2 id="saveTitle">Save video</h2><button type="button" class="iconbtn" data-close aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <video id="savePreview" controls playsinline muted></video>
+  <div class="meta-row" id="saveMeta"></div>
+  <div class="field"><label class="lbl" for="saveDate">Day this is for</label><input type="date" id="saveDate" required></div>
+  <div class="field"><label class="lbl" for="saveNote">Note (optional)</label><textarea id="saveNote" placeholder="What happened today? What's the problem you're working through?"></textarea></div>
+  <p class="err" id="saveErr" role="alert"></p>
+  <button class="btn primary wide" id="saveBtn" type="submit">Save to channel</button>
+</form></dialog>
+
+<!-- Play a video -->
+<dialog id="dlgPlay"><div class="sheet">
+  <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2 id="playTitle">Clip</h2><button type="button" class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <video id="playVideo" controls playsinline></video>
+  <div class="meta-row" id="playMeta"></div>
+  <div class="field"><label class="lbl" for="playNote">Note</label><textarea id="playNote" placeholder="Add a note about this clip"></textarea></div>
+  <p class="err" id="playErr" role="alert"></p>
+  <div class="two">
+    <button class="btn" id="playShare" type="button">Save a copy</button>
+    <button class="btn danger" id="playDelete" type="button">Delete clip</button>
+  </div>
+</div></dialog>
+
+<!-- Add or edit a channel -->
+<dialog id="dlgChannel"><form class="sheet" id="formChannel">
+  <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2 id="chTitle">New channel</h2><button type="button" class="iconbtn" data-close aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="field"><label class="lbl" for="chName">Channel name</label><input id="chName" required maxlength="40" placeholder="Grokbot" autocomplete="off"></div>
+  <div class="field"><label class="lbl" for="chObj">Objective</label><textarea id="chObj" maxlength="200" placeholder="Get Grokbot to $10,000 a month"></textarea></div>
+  <div class="field"><span class="lbl">Color</span><div class="swatches" id="chColors"></div></div>
+  <button class="btn primary wide" type="submit" id="chSave">Create channel</button>
+  <button class="btn danger ghost wide hide" type="button" id="chDelete">Delete channel</button>
+</form></dialog>
+
+<!-- Settings -->
+<dialog id="dlgSettings"><div class="sheet">
+  <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2>Storage and setup</h2><button type="button" class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="rows" id="setRows"></div>
+  <p class="small"><b>Your videos live on this phone only.</b> Nothing is uploaded anywhere. Removing Dailies from your Home Screen or clearing website data deletes them, so use Save a copy on any clip you can't lose.</p>
+  <p class="small" id="setInstall"><b>Put it on your Home Screen:</b> in Safari tap Share, then Add to Home Screen. Open Dailies from that icon from then on, so your videos stay in one place.</p>
+  <p class="small"><b>Daily nudge:</b> the ring on the home screen shows what's missing today. For a ping at a set time, add a repeating reminder in the Reminders or Clock app.</p>
+</div></dialog>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const dkey = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fromKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const uid = () => 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const fmtDay = d => `${WD[d.getDay()]} ${d.getDate()} ${MO[d.getMonth()]}`;
+const fmtDur = s => { if (!s || !isFinite(s)) return ''; s = Math.round(s); const m = Math.floor(s / 60); return `${m}:${pad(s % 60)}`; };
+const fmtSize = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
+const fmtTime = ts => { const d = new Date(ts); let h = d.getHours(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${pad(d.getMinutes())} ${ap}`; };
+const COLORS = ['#ff5a4f', '#3d9bff', '#ffb02e', '#2fd48f', '#a77bff', '#ff6fb1'];
+const inFrame = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+const standalone = (() => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } })();
+
+const I = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  fwd: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
+};
+
+/* ---------- storage: IndexedDB on this device, memory if that's unavailable ---------- */
+const store = {
+  db: null, durable: false,
+  mem: { channels: new Map(), entries: new Map(), videos: new Map(), meta: new Map() },
+  open() {
+    return new Promise(res => {
+      let settled = false; const done = ok => { if (!settled) { settled = true; this.durable = ok; res(ok); } };
+      try {
+        const rq = indexedDB.open('dailies', 1);
+        rq.onupgradeneeded = () => { const db = rq.result; ['channels', 'entries', 'videos', 'meta'].forEach(n => { if (!db.objectStoreNames.contains(n)) db.createObjectStore(n); }); };
+        rq.onsuccess = () => { this.db = rq.result; done(true); };
+        rq.onerror = () => done(false); rq.onblocked = () => done(false);
+        setTimeout(() => done(false), 4000);
+      } catch (e) { done(false); }
+    });
+  },
+  tx(name, mode, fn) {
+    if (!this.db) return Promise.resolve(fn(null));
+    return new Promise((res, rej) => {
+      let out;
+      try {
+        const t = this.db.transaction(name, mode);
+        const r = fn(t.objectStore(name));
+        if (r && 'onsuccess' in r) r.onsuccess = () => { out = r.result; };
+        t.oncomplete = () => res(out);
+        t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Storage write was stopped'));
+      } catch (e) { rej(e); }
+    });
+  },
+  all(name) { return this.db ? this.tx(name, 'readonly', s => s.getAll()) : Promise.resolve([...this.mem[name].values()]); },
+  get(name, key) { return this.db ? this.tx(name, 'readonly', s => s.get(key)) : Promise.resolve(this.mem[name].get(key)); },
+  put(name, key, val) { return this.db ? this.tx(name, 'readwrite', s => { s.put(val, key); }) : Promise.resolve(void this.mem[name].set(key, val)); },
+  del(name, key) { return this.db ? this.tx(name, 'readwrite', s => { s.delete(key); }) : Promise.resolve(void this.mem[name].delete(key)); }
+};
+
+const state = { channels: [], entries: [], calMonth: null, activeId: null };
+const chById = id => state.channels.find(c => c.id === id);
+const entriesOf = id => state.entries.filter(e => e.channelId === id);
+const daysOf = id => new Set(entriesOf(id).map(e => e.date));
+function streakOf(days) {
+  let d = new Date(); if (!days.has(dkey(d))) d = addDays(d, -1);
+  let n = 0; while (days.has(dkey(d))) { n++; d = addDays(d, -1); }
+  return n;
+}
+
+/* ---------- views ---------- */
+const app = $('#app'), dockRec = $('#dockRec'), dockUp = $('#dockUp');
+let dockChannel = null;
+function setDock(c) {
+  dockChannel = c ? c.id : null;
+  dockRec.classList.toggle('neutral', !c);
+  dockRec.innerHTML = c
+    ? `<i class="lens"></i><span><b>Record</b><small>for ${esc(c.name)}</small></span>`
+    : `<i class="lens plus">${I.plus}</i><span><b>New channel</b></span>`;
+  dockRec.setAttribute('aria-label', c ? `Record a video for ${c.name}` : 'Create a new channel');
+  dockUp.classList.toggle('hide', !c);
+  if (c) dockUp.setAttribute('aria-label', `Upload a video to ${c.name}`);
+}
+function route() {
+  const h = (location.hash || '#home').slice(1);
+  const ch = h.startsWith('c-') ? chById(h.slice(2)) : null;
+  if (ch) renderChannel(ch); else renderHome();
+  try { const missing = state.channels.filter(c => !daysOf(c.id).has(dkey())).length; if (navigator.setAppBadge) (missing ? navigator.setAppBadge(missing) : navigator.clearAppBadge()).catch(() => {}); } catch (e) {}
+}
+function noticeHtml() {
+  if (!store.durable) return `<div class="note"><b>Preview mode.</b> This browser isn't letting Dailies store videos, so anything you add disappears when you close it.</div>`;
+  if (!standalone) return `<div class="note"><b>Add Dailies to your Home Screen.</b> In Safari tap Share, then Add to Home Screen, and open it from that icon.</div>`;
+  return '';
+}
+const chip = on => on ? `<span class="chip ok"><i></i>Logged today</span>` : `<span class="chip todo"><i></i>Not logged yet</span>`;
+function lastLogged(days, tk, yk) {
+  if (!days.size) return 'No videos yet';
+  const last = [...days].sort().pop();
+  return last === tk ? 'Last video today' : last === yk ? 'Last video yesterday' : 'Last video ' + fmtDay(fromKey(last));
+}
+
+function renderHome() {
+  const today = new Date(), tk = dkey(today), yk = dkey(addDays(today, -1));
+  const total = state.channels.length;
+  const missing = state.channels.filter(c => !daysOf(c.id).has(tk));
+  const logged = total - missing.length;
+  const C = 2 * Math.PI * 29, frac = total ? logged / total : 0;
+  let head, sub;
+  if (!total) { head = 'No channels yet'; sub = 'Create one to start logging.'; }
+  else if (!missing.length) { head = "You're all logged for today"; sub = 'Every channel has a video.'; }
+  else { head = `${missing.length} still to log today`; sub = missing.map(c => esc(c.name)).join(', '); }
+
+  const slides = state.channels.map(c => {
+    const days = daysOf(c.id), on = days.has(tk), st = streakOf(days), n = entriesOf(c.id).length;
+    let week = '';
+    for (let i = 6; i >= 0; i--) { const d = addDays(today, -i), k = dkey(d); week += `<span class="${days.has(k) ? 'on' : ''}${i === 0 ? ' now' : ''}" title="${fmtDay(d)}">${WD[d.getDay()][0]}</span>`; }
+    return `<a class="slide" href="#c-${c.id}" data-ch="${c.id}" style="--ch:${esc(c.color)}" aria-label="Open ${esc(c.name)}">
+      <div class="slide-top">${chip(on)}<span class="streak"><b>${st}</b> day streak</span></div>
+      <h3>${esc(c.name)}</h3>
+      ${c.objective ? `<p class="obj">${esc(c.objective)}</p>` : ''}
+      <div class="week" aria-label="Last 7 days">${week}</div>
+      <div class="slide-foot"><span>${n} video${n === 1 ? '' : 's'} · ${lastLogged(days, tk, yk)}</span><span>Open${I.fwd}</span></div>
+    </a>`;
+  }).join('') + `<button type="button" class="slide add" id="btnAdd"><span class="plus">${I.plus}</span><b>New channel</b><span>Add another thing you're building</span></button>`;
+  const dots = [...state.channels, null].map((c, i) => `<button type="button" data-dot="${i}" aria-label="${c ? esc(c.name) : 'New channel'}"><i></i></button>`).join('');
+
+  app.innerHTML = `
+    <header class="top"><div><div class="when">${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][today.getDay()]}, ${MONTHS[today.getMonth()]} ${today.getDate()}</div><h1>Dailies</h1></div><button class="iconbtn" id="btnSettings" aria-label="Storage and setup">${I.gear}</button></header>
+    <section class="today" aria-label="Today">
+      <div class="ring${missing.length ? ' todo' : ''}"><svg viewBox="0 0 68 68"><circle class="track" cx="34" cy="34" r="29"/><circle class="bar" cx="34" cy="34" r="29" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - frac)}"/></svg><b>${logged}<small>/${total}</small></b></div>
+      <div class="today-txt"><strong>${head}</strong><span>${sub}</span></div>
+    </section>
+    ${noticeHtml()}
+    <div class="sect"><h2>Channels</h2><span>Swipe to switch</span></div>
+    <div class="carousel" id="carousel">${slides}</div>
+    <div class="pager" id="pager">${dots}</div>`;
+
+  const car = $('#carousel'), els = [...car.children];
+  let idx = Math.max(0, state.channels.findIndex(c => c.id === state.activeId));
+  if (!state.channels.length) idx = 0;
+  const center = (i, smooth) => { const el = els[i]; if (el) car.scrollTo({ left: el.offsetLeft - (car.clientWidth - el.clientWidth) / 2, behavior: smooth ? 'smooth' : 'auto' }); };
+  const mark = i => {
+    els.forEach((el, j) => el.classList.toggle('active', j === i));
+    [...$('#pager').children].forEach((d, j) => d.classList.toggle('active', j === i));
+    const c = state.channels[i] || null; state.activeId = c ? c.id : null; setDock(c);
+  };
+  let raf = 0;
+  car.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+    const mid = car.scrollLeft + car.clientWidth / 2; let best = 0, bd = 1e9;
+    els.forEach((el, j) => { const d = Math.abs(el.offsetLeft + el.clientWidth / 2 - mid); if (d < bd) { bd = d; best = j; } });
+    if (!els[best].classList.contains('active')) mark(best);
+  }); }, { passive: true });
+  $('#pager').addEventListener('click', ev => { const b = ev.target.closest('[data-dot]'); if (b) center(+b.dataset.dot, true); });
+  mark(idx); center(idx, false);
+}
+
+function renderChannel(c) {
+  const today = new Date(), tk = dkey(today), yk = dkey(addDays(today, -1));
+  state.activeId = c.id; setDock(c);
+  const list = entriesOf(c.id).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  const days = new Set(list.map(e => e.date));
+  const counts = {}; list.forEach(e => counts[e.date] = (counts[e.date] || 0) + 1);
+  if (!state.calMonth) state.calMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const m = state.calMonth, first = m.getDay(), dim = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+  const isThisMonth = m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth();
+  let cells = WD.map(w => `<span class="wd">${w[0]}</span>`).join('') + '<span></span>'.repeat(first);
+  for (let d = 1; d <= dim; d++) {
+    const k = `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(d)}`;
+    const cls = ['d', days.has(k) ? 'on' : '', k === tk ? 'today' : '', k > tk ? 'future' : ''].join(' ');
+    cells += days.has(k) ? `<a class="${cls}" href="#" data-jump="${k}" aria-label="${d} ${MONTHS[m.getMonth()]}, ${counts[k]} video${counts[k] > 1 ? 's' : ''}">${d}${counts[k] > 1 ? `<sup>${counts[k]}</sup>` : ''}</a>` : `<span class="${cls}">${d}</span>`;
+  }
+  const groups = []; list.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
+  const daysHtml = groups.map(g => `<section class="day" id="day-${g.date}"><h3><span>${g.date === tk ? 'Today' : g.date === yk ? 'Yesterday' : fmtDay(fromKey(g.date)) + (g.date.slice(0, 4) != today.getFullYear() ? ' ' + g.date.slice(0, 4) : '')}</span><span>${g.items.length} clip${g.items.length > 1 ? 's' : ''}</span></h3><div class="clips">${g.items.map(e => `
+      <button type="button" class="clip" data-play="${e.id}">
+        <span class="thumb" ${e.thumb ? `style="background-image:url(${e.thumb})"` : ''}>${I.play}</span>
+        <span class="clip-meta"><span class="t">${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}</span><span class="n${e.note ? '' : ' none'}">${e.note ? esc(e.note) : 'No note'}</span></span>
+      </button>`).join('')}</div></section>`).join('');
+  app.style.setProperty('--ch', c.color);
+  app.innerHTML = `
+    <div class="navrow"><a class="iconbtn" href="#home" aria-label="Back to home">${I.back}</a><button class="iconbtn" id="btnEdit" aria-label="Edit channel">${I.edit}</button></div>
+    <section class="hero">
+      <div>${chip(days.has(tk))}</div>
+      <h1>${esc(c.name)}</h1>
+      ${c.objective ? `<p class="obj">${esc(c.objective)}</p>` : ''}
+      <div class="stats">
+        <div><strong>${list.length}</strong><span>Videos</span></div>
+        <div><strong>${days.size}</strong><span>Days logged</span></div>
+        <div><strong>${streakOf(days)}</strong><span>Day streak</span></div>
+      </div>
+    </section>
+    <section class="cal">
+      <div class="cal-head"><button type="button" id="calPrev" aria-label="Previous month">${I.back}</button><h3>${MONTHS[m.getMonth()]} ${m.getFullYear()}</h3><button type="button" id="calNext" aria-label="Next month" ${isThisMonth ? 'disabled' : ''}>${I.fwd}</button></div>
+      <div class="cal-grid">${cells}</div>
+    </section>
+    ${list.length ? `<div class="days">${daysHtml}</div>` : `<div class="empty"><b>No videos yet</b>Tap Record below, or upload one from your camera roll.</div>`}`;
+}
+
+/* ---------- picking and saving videos ---------- */
+let pending = null; // { channelId, files, url }
+const pickRecord = $('#pickRecord'), pickUpload = $('#pickUpload');
+function startPick(channelId, record) { pending = { channelId }; const inp = record ? pickRecord : pickUpload; inp.value = ''; inp.click(); }
+[pickRecord, pickUpload].forEach(inp => inp.addEventListener('change', () => {
+  const files = [...inp.files].filter(f => !f.type || f.type.startsWith('video/'));
+  if (!files.length || !pending) return;
+  pending.files = files; openSave();
+}));
+function openSave() {
+  const c = chById(pending.channelId), files = pending.files;
+  $('#saveTitle').textContent = `Save to ${c.name}`;
+  pending.url = URL.createObjectURL(files[0]);
+  const v = $('#savePreview'); v.src = pending.url;
+  const size = files.reduce((n, f) => n + f.size, 0);
+  $('#saveMeta').textContent = files.length > 1 ? `${files.length} videos · ${fmtSize(size)} · showing the first` : `${fmtSize(size)}`;
+  const d = $('#saveDate'); d.max = dkey(); d.value = dkey();
+  $('#saveNote').value = ''; $('#saveErr').textContent = '';
+  const b = $('#saveBtn'); b.disabled = false; b.textContent = files.length > 1 ? `Save ${files.length} videos` : 'Save to channel';
+  $('#dlgSave').showModal();
+}
+function probe(file) {
+  return new Promise(res => {
+    const v = document.createElement('video'), url = URL.createObjectURL(file);
+    let done = false;
+    const fin = thumb => { if (done) return; done = true; clearTimeout(t); const duration = isFinite(v.duration) ? v.duration : 0; v.removeAttribute('src'); try { v.load(); } catch (e) {} URL.revokeObjectURL(url); res({ duration, thumb }); };
+    const t = setTimeout(() => fin(''), 6000);
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.6, (v.duration || 1) / 2); } catch (e) { fin(''); } };
+    v.onseeked = () => { try { const w = 320, h = Math.round(w * v.videoHeight / v.videoWidth) || 200; const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(v, 0, 0, w, h); fin(cv.toDataURL('image/jpeg', 0.7)); } catch (e) { fin(''); } };
+    v.onerror = () => fin('');
+    v.src = url;
+  });
+}
+$('#formSave').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const btn = $('#saveBtn'), err = $('#saveErr');
+  const date = $('#saveDate').value, note = $('#saveNote').value.trim();
+  if (!date || date > dkey()) { err.textContent = 'Pick today or an earlier day.'; return; }
+  btn.disabled = true; err.textContent = '';
+  const files = pending.files;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      btn.textContent = files.length > 1 ? `Saving ${i + 1} of ${files.length}…` : 'Saving…';
+      const f = files[i], id = uid();
+      const { duration, thumb } = await probe(f);
+      await store.put('videos', id, f);
+      const entry = { id, channelId: pending.channelId, date, createdAt: Date.now() + i, note, duration, size: f.size, type: f.type || 'video/mp4', name: f.name || '', thumb };
+      await store.put('entries', id, entry);
+      state.entries.push(entry);
+    }
+    closeSave(); $('#dlgSave').close(); state.calMonth = null; route();
+  } catch (e) {
+    const full = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
+    err.textContent = full ? "There isn't enough free space on this phone to save that video. Free up some storage and try again." : "That video couldn't be saved. Try again, or try a shorter clip.";
+    btn.disabled = false; btn.textContent = 'Try again'; route();
+  }
+});
+function closeSave() { const v = $('#savePreview'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} if (pending && pending.url) URL.revokeObjectURL(pending.url); }
+$('#dlgSave').addEventListener('close', () => { closeSave(); pending = null; });
+
+/* ---------- player ---------- */
+let playing = null; // { entry, url, blob }
+async function openPlay(id) {
+  const e = state.entries.find(x => x.id === id); if (!e) return;
+  const c = chById(e.channelId), err = $('#playErr'); err.textContent = '';
+  $('#playTitle').textContent = fmtDay(fromKey(e.date));
+  $('#playMeta').textContent = `${c ? c.name + ' · ' : ''}${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}`;
+  $('#playNote').value = e.note || '';
+  const del = $('#playDelete'); del.textContent = 'Delete clip'; del.dataset.armed = '';
+  playing = { entry: e };
+  $('#dlgPlay').showModal();
+  try {
+    const blob = await store.get('videos', id);
+    if (!blob) throw new Error('missing');
+    playing.blob = blob; playing.url = URL.createObjectURL(blob);
+    $('#playVideo').src = playing.url;
+  } catch (x) { err.textContent = "This clip's video file isn't on this device anymore."; }
+}
+$('#dlgPlay').addEventListener('close', async () => {
+  const v = $('#playVideo'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {}
+  if (!playing) return;
+  if (playing.url) URL.revokeObjectURL(playing.url);
+  const e = playing.entry, note = $('#playNote').value.trim(); playing = null;
+  if (state.entries.includes(e) && note !== (e.note || '')) { e.note = note; try { await store.put('entries', e.id, e); } catch (x) {} route(); }
+});
+$('#playDelete').addEventListener('click', async ev => {
+  const b = ev.currentTarget;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to delete'; return; }
+  const e = playing.entry;
+  try { await store.del('videos', e.id); await store.del('entries', e.id); } catch (x) { $('#playErr').textContent = "Couldn't delete that clip. Try again."; return; }
+  state.entries = state.entries.filter(x => x !== e);
+  $('#dlgPlay').close(); route();
+});
+$('#playShare').addEventListener('click', async () => {
+  const err = $('#playErr'); err.textContent = '';
+  if (!playing || !playing.blob) return;
+  const e = playing.entry, ext = (e.name && e.name.includes('.')) ? e.name.split('.').pop() : (e.type.includes('quicktime') ? 'mov' : e.type.includes('webm') ? 'webm' : 'mp4');
+  const c = chById(e.channelId), fname = `${(c ? c.name : 'dailies').replace(/[^a-z0-9]+/gi, '-')}-${e.date}.${ext}`;
+  try {
+    const file = new File([playing.blob], fname, { type: e.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+    if (inFrame) throw new Error('preview');
+    const a = document.createElement('a'); a.href = playing.url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+  } catch (x) { if (x && x.name === 'AbortError') return; err.textContent = "Saving a copy isn't available in this view. Open Dailies from your Home Screen and try again."; }
+});
+
+/* ---------- channels ---------- */
+let editing = null;
+function openChannel(c) {
+  editing = c || null;
+  $('#chTitle').textContent = c ? 'Edit channel' : 'New channel';
+  $('#chSave').textContent = c ? 'Save changes' : 'Create channel';
+  $('#chName').value = c ? c.name : ''; $('#chObj').value = c ? c.objective : '';
+  const used = state.channels.map(x => x.color), pick = c ? c.color : (COLORS.find(x => !used.includes(x)) || COLORS[0]);
+  $('#chColors').innerHTML = COLORS.map((x, i) => `<label><input type="radio" name="chColor" id="chColor${i}" value="${x}" ${x === pick ? 'checked' : ''} aria-label="Color ${i + 1}"><span style="--c:${x}"></span></label>`).join('');
+  const del = $('#chDelete'); del.classList.toggle('hide', !c); del.dataset.armed = ''; del.textContent = 'Delete channel';
+  $('#dlgChannel').showModal();
+}
+$('#formChannel').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const name = $('#chName').value.trim(); if (!name) return;
+  const color = ($('input[name=chColor]:checked') || {}).value || COLORS[0];
+  const c = editing || { id: uid(), createdAt: Date.now() };
+  Object.assign(c, { name, objective: $('#chObj').value.trim(), color });
+  try { await store.put('channels', c.id, c); } catch (e) {}
+  if (!editing) { state.channels.push(c); state.activeId = c.id; }
+  $('#dlgChannel').close(); route();
+});
+$('#chDelete').addEventListener('click', async ev => {
+  const b = ev.currentTarget, n = entriesOf(editing.id).length;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = n ? `Tap again to delete it and its ${n} video${n > 1 ? 's' : ''}` : 'Tap again to delete'; return; }
+  const id = editing.id;
+  try { for (const e of entriesOf(id)) { await store.del('videos', e.id); await store.del('entries', e.id); } await store.del('channels', id); } catch (e) {}
+  state.entries = state.entries.filter(e => e.channelId !== id); state.channels = state.channels.filter(c => c.id !== id);
+  $('#dlgChannel').close(); location.hash = '#home'; route();
+});
+
+/* ---------- settings ---------- */
+async function openSettings() {
+  let used = '', free = '', kept = 'Not confirmed';
+  try { const est = await navigator.storage.estimate(); used = fmtSize(est.usage || 0); free = fmtSize(Math.max(0, (est.quota || 0) - (est.usage || 0))); } catch (e) {}
+  try { if (await navigator.storage.persisted()) kept = 'Yes'; } catch (e) {}
+  const bytes = state.entries.reduce((n, e) => n + (e.size || 0), 0);
+  $('#setRows').innerHTML = `
+    <div><span>Videos saved</span><span>${state.entries.length}${bytes ? ' · ' + fmtSize(bytes) : ''}</span></div>
+    ${used ? `<div><span>Space Dailies is using</span><span>${used}</span></div><div><span>Space it can still use</span><span>about ${free}</span></div>` : ''}
+    <div><span>Protected from automatic cleanup</span><span>${store.durable ? kept : 'No, preview mode'}</span></div>`;
+  $('#setInstall').classList.toggle('hide', standalone);
+  $('#dlgSettings').showModal();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-play],[data-close],[data-jump],#btnAdd,#btnEdit,#btnSettings,#calPrev,#calNext,#dockRec,#dockUp,.slide[data-ch]');
+  if (!t) return;
+  if (t.id === 'dockRec') return dockChannel ? startPick(dockChannel, true) : openChannel(null);
+  if (t.id === 'dockUp') return dockChannel && startPick(dockChannel, false);
+  if (t.dataset.ch && !t.classList.contains('active')) { ev.preventDefault(); t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); return; }
+  if (t.dataset.play) return openPlay(t.dataset.play);
+  if ('close' in t.dataset) return t.closest('dialog').close();
+  if (t.dataset.jump) { ev.preventDefault(); const el = document.getElementById('day-' + t.dataset.jump); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  if (t.id === 'btnAdd') { if (!t.classList.contains('active')) { t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); return; } return openChannel(null); }
+  if (t.id === 'btnEdit') return openChannel(chById(location.hash.slice(3)));
+  if (t.id === 'btnSettings') return openSettings();
+  if (t.id === 'calPrev' || t.id === 'calNext') { const m = state.calMonth; state.calMonth = new Date(m.getFullYear(), m.getMonth() + (t.id === 'calPrev' ? -1 : 1), 1); route(); }
+});
+// Sheets: tap outside or swipe down on the handle to dismiss.
+document.querySelectorAll('dialog').forEach(d => {
+  d.addEventListener('click', ev => { if (ev.target === d) d.close(); });
+  let y0 = null;
+  d.querySelectorAll('.grab,.sheet-head').forEach(h => {
+    h.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; d.style.transition = 'none'; }, { passive: true });
+    h.addEventListener('touchmove', e => { if (y0 === null) return; d.style.transform = `translateY(${Math.max(0, e.touches[0].clientY - y0)}px)`; }, { passive: true });
+    h.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; y0 = null; d.style.transition = ''; d.style.transform = ''; if (dy > 90) d.close(); });
+  });
+});
+window.addEventListener('hashchange', () => { state.calMonth = null; route(); window.scrollTo(0, 0); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !document.querySelector('dialog[open]')) route(); });
+
+/* ---------- start ---------- */
+(async () => {
+  await store.open();
+  try {
+    state.channels = (await store.all('channels')).sort((a, b) => a.createdAt - b.createdAt);
+    state.entries = await store.all('entries');
+    if (!state.channels.length && !(await store.get('meta', 'seeded'))) {
+      const now = Date.now();
+      const seed = [
+        ['Grokbot', 'Get Grokbot making me $10,000 a month', COLORS[0]],
+        ['BlueWater', 'Grow BlueWater to its next revenue target', COLORS[1]],
+        ['Injctr.', 'Build Injctr. from the ground up', COLORS[2]]
+      ].map(([name, objective, color], i) => ({ id: uid() + i, name, objective, color, createdAt: now + i }));
+      for (const c of seed) await store.put('channels', c.id, c);
+      await store.put('meta', 'seeded', true);
+      state.channels = seed;
+    }
+  } catch (e) {}
+  route();
+  try { if (store.durable && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}
+  try { if (!inFrame && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
+})();
+})();
+</script>
+</body>
+</html>
