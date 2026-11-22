@@ -216,7 +216,8 @@ dialog::backdrop{background:rgba(4,4,8,.66);-webkit-backdrop-filter:blur(6px);ba
 .swatches span{display:block;width:42px;height:42px;border-radius:50%;background:var(--c);border:3px solid var(--surface)}
 .swatches input:checked+span{box-shadow:0 0 0 2.5px var(--text)}
 .swatches input:focus-visible+span{box-shadow:0 0 0 2.5px var(--text),0 0 0 6px var(--line)}
-video{width:100%;max-height:48vh;background:#000;border-radius:22px;display:block}
+video,.shot{width:100%;max-height:48vh;background:#000;border-radius:22px;display:block}
+.shot{object-fit:contain}
 .meta-row{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .err{color:var(--rec);font-size:14px}
 .err:empty{display:none}
@@ -252,6 +253,11 @@ dialog.rec{max-width:none;width:100%;height:100%;max-height:100%;margin:0;border
 #recGo{width:84px;height:84px;border-radius:50%;border:5px solid #fff;display:grid;place-items:center}
 #recGo i{width:62px;height:62px;border-radius:50%;background:var(--rec);transition:all .2s ease}
 .rec.live #recGo i{width:30px;height:30px;border-radius:8px}
+.rec-modes{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 142px);display:flex;gap:4px;padding:4px;border-radius:999px;background:rgba(0,0,0,.5);z-index:1}
+.rec-modes button{font:600 14px/1 var(--body);color:rgba(255,255,255,.75);padding:10px 18px;border-radius:999px}
+.rec-modes button.on{background:#fff;color:#0a0a0e}
+.rec.live .rec-modes{display:none}
+.rec.photo #recGo i{background:#fff}
 .rec-side{display:flex;flex-direction:column;align-items:center;gap:6px;font:600 12px/1 var(--body);color:#fff;min-width:76px}
 .rec-side svg{width:26px;height:26px;padding:13px;box-sizing:content-box;border-radius:50%;background:rgba(0,0,0,.45)}
 </style>
@@ -261,12 +267,14 @@ dialog.rec{max-width:none;width:100%;height:100%;max-height:100%;margin:0;border
 <nav id="dock" aria-label="Add a video"><div class="dock-in"><button type="button" id="dockUp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>Upload</button><button type="button" id="dockRec"></button></div></nav>
 
 <input type="file" id="pickRecord" accept="video/*" capture="user" class="hide">
-<input type="file" id="pickUpload" accept="video/*" multiple class="hide">
+<input type="file" id="pickPhoto" accept="image/*" capture="environment" class="hide">
+<input type="file" id="pickUpload" accept="video/*,image/*" multiple class="hide">
 
 <!-- Save a new video -->
 <dialog id="dlgSave"><form class="sheet" id="formSave">
   <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2 id="saveTitle">Save video</h2><button type="button" class="iconbtn" data-close aria-label="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <video id="savePreview" controls playsinline muted></video>
+  <img id="saveImg" class="shot hide" alt="Photo preview">
   <div class="meta-row" id="saveMeta"></div>
   <div class="field"><label class="lbl" for="saveDate">Day this is for</label><input type="date" id="saveDate" required></div>
   <div class="field"><label class="lbl" for="saveNote">Note (optional)</label><textarea id="saveNote" placeholder="What happened today? What's the problem you're working through?"></textarea></div>
@@ -278,8 +286,9 @@ dialog.rec{max-width:none;width:100%;height:100%;max-height:100%;margin:0;border
 <dialog id="dlgPlay"><div class="sheet">
   <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2 id="playTitle">Clip</h2><button type="button" class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <video id="playVideo" controls playsinline></video>
+  <img id="playImg" class="shot hide" alt="">
   <div class="meta-row" id="playMeta"></div>
-  <div class="field"><label class="lbl" for="playNote">Note</label><textarea id="playNote" placeholder="Add a note about this clip"></textarea></div>
+  <div class="field"><label class="lbl" for="playNote">Note</label><textarea id="playNote" placeholder="Add a note"></textarea></div>
   <p class="err" id="playErr" role="alert"></p>
   <div class="two">
     <button class="btn" id="playShare" type="button">Save a copy</button>
@@ -306,6 +315,7 @@ dialog.rec{max-width:none;width:100%;height:100%;max-height:100%;margin:0;border
     <span class="rec-sp"></span>
   </div>
   <p class="rec-msg" id="recMsg" role="alert"></p>
+  <div class="rec-modes" id="recModes" role="group" aria-label="Camera mode"><button type="button" data-mode="video" class="on">Video</button><button type="button" data-mode="photo">Photo</button></div>
   <div class="rec-bottom">
     <button type="button" class="rec-side" id="recFlip" aria-label="Flip camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 0 1 14.5-3.5L20 7M20 3v4h-4M20 15a8 8 0 0 1-14.5 3.5L4 17M4 21v-4h4"/></svg><span>Flip</span></button>
     <button type="button" id="recGo" aria-label="Start recording"><i></i></button>
@@ -317,7 +327,7 @@ dialog.rec{max-width:none;width:100%;height:100%;max-height:100%;margin:0;border
 <dialog id="dlgSettings"><div class="sheet">
   <div class="grab" aria-hidden="true"></div><div class="sheet-head"><h2>Storage and setup</h2><button type="button" class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="rows" id="setRows"></div>
-  <p class="small"><b>Your videos live on this phone only.</b> Nothing is uploaded anywhere. Removing Dailies from your Home Screen or clearing website data deletes them, so use Save a copy on any clip you can't lose.</p>
+  <p class="small"><b>Your videos and photos live on this phone only.</b> Nothing is uploaded anywhere. Removing Dailies from your Home Screen or clearing website data deletes them, so use Save a copy on any clip you can't lose.</p>
   <p class="small"><b>How long can a video be?</b> Recording in Dailies stops itself at 10:00 and makes small files. Uploads from your camera roll have no time limit; they only need to fit in the space shown above.</p>
   <p class="small" id="setInstall"><b>Put it on your Home Screen:</b> in Safari tap Share, then Add to Home Screen. Open Dailies from that icon from then on, so your videos stay in one place.</p>
   <p class="small"><b>Daily nudge:</b> the ring on the home screen shows what's missing today. For a ping at a set time, add a repeating reminder in the Reminders or Clock app.</p>
@@ -417,11 +427,11 @@ function setDock(c) {
   dockChannel = c ? c.id : null;
   dockRec.classList.toggle('neutral', !c);
   dockRec.innerHTML = c
-    ? `<i class="lens"></i><span><b>Record</b><small>for ${esc(c.name)}</small></span>`
+    ? `<i class="lens"></i><span><b>Camera</b><small>for ${esc(c.name)}</small></span>`
     : `<i class="lens plus">${I.plus}</i><span><b>New channel</b></span>`;
-  dockRec.setAttribute('aria-label', c ? `Record a video for ${c.name}` : 'Create a new channel');
+  dockRec.setAttribute('aria-label', c ? `Take a video or photo for ${c.name}` : 'Create a new channel');
   dockUp.classList.toggle('hide', !c);
-  if (c) dockUp.setAttribute('aria-label', `Upload a video to ${c.name}`);
+  if (c) dockUp.setAttribute('aria-label', `Upload a video or photo to ${c.name}`);
 }
 function route() {
   const h = (location.hash || '#home').slice(1);
@@ -460,7 +470,7 @@ function renderHome() {
       <h3>${esc(c.name)}</h3>
       ${c.objective ? `<p class="obj">${esc(c.objective)}</p>` : ''}
       <div class="week" aria-label="Last 7 days">${week}</div>
-      <div class="slide-foot"><span>${n ? `Day ${dayNum(c.id, tk)} · ` : ''}${n} video${n === 1 ? '' : 's'}</span><span>Open${I.fwd}</span></div>
+      <div class="slide-foot"><span>${n ? `Day ${dayNum(c.id, tk)} · ` : ''}${n} entr${n === 1 ? 'y' : 'ies'}</span><span>Open${I.fwd}</span></div>
     </a>`;
   }).join('') + `<button type="button" class="slide add" id="btnAdd"><span class="plus">${I.plus}</span><b>New channel</b><span>Add another thing you're building</span></button>`;
   const dots = [...state.channels, null].map((c, i) => `<button type="button" data-dot="${i}" aria-label="${c ? esc(c.name) : 'New channel'}"><i></i></button>`).join('');
@@ -508,13 +518,13 @@ function renderChannel(c) {
   for (let d = 1; d <= dim; d++) {
     const k = `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(d)}`;
     const cls = ['d', days.has(k) ? 'on' : '', k === tk ? 'today' : '', k > tk ? 'future' : ''].join(' ');
-    cells += days.has(k) ? `<a class="${cls}" href="#" data-jump="${k}" aria-label="${d} ${MONTHS[m.getMonth()]}, ${counts[k]} video${counts[k] > 1 ? 's' : ''}">${d}${counts[k] > 1 ? `<sup>${counts[k]}</sup>` : ''}</a>` : `<span class="${cls}">${d}</span>`;
+    cells += days.has(k) ? `<a class="${cls}" href="#" data-jump="${k}" aria-label="${d} ${MONTHS[m.getMonth()]}, ${counts[k]} entr${counts[k] > 1 ? 'ies' : 'y'}">${d}${counts[k] > 1 ? `<sup>${counts[k]}</sup>` : ''}</a>` : `<span class="${cls}">${d}</span>`;
   }
   const groups = []; list.forEach(e => { const g = groups[groups.length - 1]; if (g && g.date === e.date) g.items.push(e); else groups.push({ date: e.date, items: [e] }); });
-  const daysHtml = groups.map(g => `<section class="day" id="day-${g.date}"><h3><span class="dn">Day ${dayNum(c.id, g.date)}</span><span>${g.date === tk ? 'Today' : g.date === yk ? 'Yesterday' : fmtDay(fromKey(g.date)) + (g.date.slice(0, 4) != today.getFullYear() ? ' ' + g.date.slice(0, 4) : '')} · ${g.items.length} clip${g.items.length > 1 ? 's' : ''}</span></h3><div class="clips">${g.items.map(e => `
+  const daysHtml = groups.map(g => `<section class="day" id="day-${g.date}"><h3><span class="dn">Day ${dayNum(c.id, g.date)}</span><span>${g.date === tk ? 'Today' : g.date === yk ? 'Yesterday' : fmtDay(fromKey(g.date)) + (g.date.slice(0, 4) != today.getFullYear() ? ' ' + g.date.slice(0, 4) : '')} · ${g.items.length} entr${g.items.length > 1 ? 'ies' : 'y'}</span></h3><div class="clips">${g.items.map(e => `
       <button type="button" class="clip" data-play="${e.id}">
-        <span class="thumb" ${e.thumb ? `style="background-image:url(${e.thumb})"` : ''}>${I.play}</span>
-        <span class="clip-meta"><span class="t">${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}</span><span class="n${e.note ? '' : ' none'}">${e.note ? esc(e.note) : 'No note'}</span></span>
+        <span class="thumb" ${e.thumb ? `style="background-image:url(${e.thumb})"` : ''}>${e.kind === 'photo' ? '' : I.play}</span>
+        <span class="clip-meta"><span class="t">${fmtTime(e.createdAt)}${e.kind === 'photo' ? ' · Photo' : e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}</span><span class="n${e.note ? '' : ' none'}">${e.note ? esc(e.note) : 'No note'}</span></span>
       </button>`).join('')}</div></section>`).join('');
   app.style.setProperty('--ch', c.color);
   app.innerHTML = `
@@ -524,7 +534,7 @@ function renderChannel(c) {
       <h1>${esc(c.name)}</h1>
       ${c.objective ? `<p class="obj">${esc(c.objective)}</p>` : ''}
       <div class="stats">
-        <div><strong>${list.length}</strong><span>Videos</span></div>
+        <div><strong>${list.length}</strong><span>Entries</span></div>
         <div><strong>${days.size}</strong><span>Days logged</span></div>
         <div><strong>${streakOf(days)}</strong><span>Day streak</span></div>
       </div>
@@ -533,7 +543,7 @@ function renderChannel(c) {
       <div class="cal-head"><button type="button" id="calPrev" aria-label="Previous month">${I.back}</button><h3>${MONTHS[m.getMonth()]} ${m.getFullYear()}</h3><button type="button" id="calNext" aria-label="Next month" ${isThisMonth ? 'disabled' : ''}>${I.fwd}</button></div>
       <div class="cal-grid">${cells}</div>
     </section>
-    ${list.length ? `<div class="days">${daysHtml}</div>` : `<div class="empty"><b>No videos yet</b>Tap Record below, or upload one from your camera roll.</div>`}`;
+    ${list.length ? `<div class="days">${daysHtml}</div>` : `<div class="empty"><b>Nothing here yet</b>Tap Camera below to take a video or photo, or upload from your camera roll.</div>`}`;
 }
 
 /* ---------- picking and saving videos ---------- */
@@ -543,12 +553,16 @@ const CHUNK = 4 * 1024 * 1024; // videos are stored in 4 MB pieces so large file
 const pad2 = n => String(n).padStart(2, '0');
 const partKey = (id, p) => `${id}:${pad2(p)}:`;
 const fmtClock = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
-const pickRecord = $('#pickRecord'), pickUpload = $('#pickUpload');
-function startPick(channelId, record) { pending = { channelId }; const inp = record ? pickRecord : pickUpload; inp.value = ''; inp.click(); }
-[pickRecord, pickUpload].forEach(inp => inp.addEventListener('change', () => {
-  const files = [...inp.files].filter(f => !f.type || f.type.startsWith('video/'));
+const pickRecord = $('#pickRecord'), pickUpload = $('#pickUpload'), pickPhoto = $('#pickPhoto');
+// record: true = phone's video camera, 'photo' = phone's photo camera, false = choose from the library
+function startPick(channelId, record) { pending = { channelId }; const inp = record === 'photo' ? pickPhoto : record ? pickRecord : pickUpload; inp.value = ''; inp.click(); }
+const isImg = f => (f.type || '').startsWith('image/') || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name || '');
+[pickRecord, pickUpload, pickPhoto].forEach(inp => inp.addEventListener('change', () => {
+  const files = [...inp.files].filter(f => !f.type || f.type.startsWith('video/') || f.type.startsWith('image/'));
   if (!files.length || !pending) return;
-  pending.items = files.map(f => ({ name: f.name || '', parts: [{ blob: f, type: f.type || 'video/mp4', duration: 0 }] }));
+  pending.items = files.map(f => isImg(f)
+    ? { kind: 'photo', name: f.name || '', parts: [{ blob: f, type: f.type || 'image/jpeg', duration: 0 }] }
+    : { kind: 'video', name: f.name || '', parts: [{ blob: f, type: f.type || 'video/mp4', duration: 0 }] });
   openSave();
 }));
 // Big files go to the phone's private file storage (written piece by piece in a worker);
@@ -578,17 +592,31 @@ function openSave() {
   const c = chById(pending.channelId), items = pending.items;
   $('#saveTitle').textContent = `Save to ${c.name}`;
   pending.url = URL.createObjectURL(items[0].parts[0].blob);
-  const v = $('#savePreview'); v.src = pending.url;
+  const v = $('#savePreview'), im = $('#saveImg'), photo = items[0].kind === 'photo';
+  v.classList.toggle('hide', photo); im.classList.toggle('hide', !photo);
+  if (photo) im.src = pending.url; else v.src = pending.url;
   const size = items.reduce((n, it) => n + itemSize(it), 0);
   const dur = items[0].parts.reduce((n, p) => n + (p.duration || 0), 0);
-  let meta = items.length > 1 ? `${items.length} videos · ${fmtSize(size)} · showing the first` : `${dur ? fmtDur(dur) + ' · ' : ''}${fmtSize(size)}`;
+  const nP = items.filter(it => it.kind === 'photo').length, nV = items.length - nP;
+  const what = [nV ? `${nV} video${nV > 1 ? 's' : ''}` : '', nP ? `${nP} photo${nP > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ');
+  let meta = items.length > 1 ? `${what} · ${fmtSize(size)} · showing the first` : `${photo ? 'Photo · ' : dur ? fmtDur(dur) + ' · ' : ''}${fmtSize(size)}`;
   if (items.length === 1 && items[0].parts.length > 1) meta += ` · ${items[0].parts.length} parts (camera flipped), showing the first`;
   if (pending.limitNote) meta += ` · stopped at the ${fmtClock(REC_MAX)} limit`;
   $('#saveMeta').textContent = meta;
   const d = $('#saveDate'); d.max = dkey(); d.value = dkey();
   $('#saveNote').value = ''; $('#saveErr').textContent = '';
-  const b = $('#saveBtn'); b.disabled = false; b.textContent = items.length > 1 ? `Save ${items.length} videos` : 'Save to channel';
+  const b = $('#saveBtn'); b.disabled = false; b.textContent = items.length > 1 ? `Save ${what}` : 'Save to channel';
   $('#dlgSave').showModal();
+}
+function probeImage(blob) {
+  return new Promise(res => {
+    const img = new Image(), url = URL.createObjectURL(blob);
+    const fin = t => { clearTimeout(to); URL.revokeObjectURL(url); res(t); };
+    const to = setTimeout(() => fin(''), 6000);
+    img.onload = () => { try { const w = 320, h = Math.round(w * img.naturalHeight / img.naturalWidth) || 426; const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h); fin(cv.toDataURL('image/jpeg', 0.7)); } catch (e) { fin(''); } };
+    img.onerror = () => fin('');
+    img.src = url;
+  });
 }
 function probe(file) {
   return new Promise(res => {
@@ -618,14 +646,15 @@ $('#formSave').addEventListener('submit', async ev => {
   try {
     const est = await navigator.storage.estimate();
     const free = (est.quota || 0) - (est.usage || 0);
-    if (est.quota && total > free) { err.textContent = `This needs ${fmtSize(total)} but Dailies only has about ${fmtSize(Math.max(0, free))} left on this phone. Free up storage, or record with the in-app camera, which makes much smaller files.`; btn.disabled = false; return; }
+    if (est.quota && total > free) { err.textContent = `This needs ${fmtSize(total)} but Dailies only has about ${fmtSize(Math.max(0, free))} left on this phone. Free up storage and try again.`; btn.disabled = false; return; }
   } catch (e) {}
   let written = 0, curId = null, curParts = 0;
   try {
     for (let i = 0; i < items.length; i++) {
       const it = items[i], id = curId = uid();
       let thumb = it.thumb || '', known = it.parts.reduce((n, p) => n + (p.duration || 0), 0);
-      if (!thumb || !known) { const pr = await probe(it.parts[0].blob); thumb = thumb || pr.thumb; if (!known) { it.parts[0].duration = pr.duration; known = pr.duration; } }
+      if (it.kind === 'photo') { if (!thumb) thumb = await probeImage(it.parts[0].blob); }
+      else if (!thumb || !known) { const pr = await probe(it.parts[0].blob); thumb = thumb || pr.thumb; if (!known) { it.parts[0].duration = pr.duration; known = pr.duration; } }
       const parts = [];
       for (let p = 0; p < it.parts.length; p++) {
         const b = it.parts[p].blob; let n = 0, kind = 'idb';
@@ -642,7 +671,7 @@ $('#formSave').addEventListener('submit', async ev => {
         }
         parts.push({ type: it.parts[p].type, size: b.size, chunks: n, kind, duration: it.parts[p].duration || 0 });
       }
-      const entry = { id, channelId: pending.channelId, date, createdAt: Date.now() + i, note, duration: known, size: itemSize(it), type: parts[0].type, name: it.name || '', thumb, parts };
+      const entry = { id, kind: it.kind === 'photo' ? 'photo' : 'video', channelId: pending.channelId, date, createdAt: Date.now() + i, note, duration: known, size: itemSize(it), type: parts[0].type, name: it.name || '', thumb, parts };
       await store.put('entries', id, entry);
       state.entries.push(entry); curId = null;
     }
@@ -651,29 +680,32 @@ $('#formSave').addEventListener('submit', async ev => {
     if (curId) await removeVideo(curId, curParts);
     const full = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
     const why = e ? [e.name, e.message].filter(Boolean).join(': ').slice(0, 160) : '';
-    err.textContent = (full ? "This phone ran out of space for Dailies while saving. Free up some storage and try again." : "That video couldn't be saved.") + (why ? ` Reason: ${why}` : ' The phone gave no reason.');
+    err.textContent = (full ? "This phone ran out of space for Dailies while saving. Free up some storage and try again." : "That couldn't be saved.") + (why ? ` Reason: ${why}` : ' The phone gave no reason.');
     btn.disabled = false; btn.textContent = 'Try again'; route();
   }
 });
-function closeSave() { const v = $('#savePreview'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} if (pending && pending.url) URL.revokeObjectURL(pending.url); }
+function closeSave() { $('#saveImg').removeAttribute('src'); const v = $('#savePreview'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {} if (pending && pending.url) URL.revokeObjectURL(pending.url); }
 $('#dlgSave').addEventListener('close', () => { closeSave(); pending = null; });
 
 /* ---------- in-app camera ---------- */
 const REC_MAX = 600; // seconds: recording stops itself at 10:00
-const rec = { stream: null, mr: null, facing: 'user', parts: [], chunks: [], segStart: 0, elapsed: 0, timer: 0, on: false, paused: false, thumb: '', channelId: null, busy: false };
+const rec = { stream: null, mr: null, facing: 'user', parts: [], chunks: [], segStart: 0, elapsed: 0, timer: 0, on: false, paused: false, thumb: '', channelId: null, busy: false, mode: 'video' };
 const canRecord = () => !inFrame && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 function recMime() { for (const t of ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']) { try { if (MediaRecorder.isTypeSupported(t)) return t; } catch (e) {} } return ''; }
 function recStopStream() { if (rec.stream) { rec.stream.getTracks().forEach(t => t.stop()); rec.stream = null; } }
 async function recStream() {
   recStopStream();
-  rec.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: rec.facing, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true });
+  const photo = rec.mode === 'photo'; // photos ask the camera for a sharper picture and no microphone
+  rec.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: rec.facing, width: { ideal: photo ? 1920 : 1280 }, height: { ideal: photo ? 1080 : 720 } }, audio: !photo });
   const v = $('#recVideo'); v.srcObject = rec.stream; v.classList.toggle('mirror', rec.facing === 'user'); try { await v.play(); } catch (e) {}
 }
 function recUI() {
   const total = rec.elapsed + (rec.on && !rec.paused ? (Date.now() - rec.segStart) / 1000 : 0);
-  $('#recTime').textContent = `${fmtClock(total)} / ${fmtClock(REC_MAX)}`;
-  $('#dlgRec').classList.toggle('live', rec.on);
-  $('#recGo').setAttribute('aria-label', rec.on ? 'Stop recording' : 'Start recording');
+  const photo = rec.mode === 'photo';
+  $('#recTime').textContent = photo ? 'Photo' : `${fmtClock(total)} / ${fmtClock(REC_MAX)}`;
+  $('#dlgRec').classList.toggle('live', rec.on); $('#dlgRec').classList.toggle('photo', photo);
+  $('#recGo').setAttribute('aria-label', photo ? 'Take photo' : rec.on ? 'Stop recording' : 'Start recording');
+  [...$('#recModes').children].forEach(b => b.classList.toggle('on', b.dataset.mode === rec.mode));
   $('#recNative').classList.toggle('hide', rec.on);
   return total;
 }
@@ -700,6 +732,27 @@ async function openRecorder(channelId) {
   try { await recStream(); }
   catch (e) { $('#recMsg').textContent = e && e.name === 'NotAllowedError' ? "Dailies isn't allowed to use the camera and microphone. Allow them in Settings, or tap Phone camera below." : "The in-app camera couldn't start. Tap Phone camera below instead."; }
 }
+function takePhoto() {
+  const v = $('#recVideo');
+  if (!v.videoWidth) { $('#recMsg').textContent = "The camera isn't ready yet. Try again in a second."; return; }
+  rec.busy = true;
+  const cv = document.createElement('canvas'); cv.width = v.videoWidth; cv.height = v.videoHeight;
+  cv.getContext('2d').drawImage(v, 0, 0);
+  const thumb = snap(v), channelId = rec.channelId;
+  cv.toBlob(blob => {
+    rec.busy = false;
+    if (!blob) { $('#recMsg').textContent = "That photo couldn't be captured. Tap Phone camera below instead."; return; }
+    $('#dlgRec').close();
+    pending = { channelId, items: [{ kind: 'photo', parts: [{ blob, type: 'image/jpeg', duration: 0 }], thumb }] };
+    openSave();
+  }, 'image/jpeg', 0.92);
+}
+$('#recModes').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-mode]'); if (!b || rec.on || rec.busy || b.dataset.mode === rec.mode) return;
+  rec.busy = true; rec.mode = b.dataset.mode; recUI(); $('#recMsg').textContent = '';
+  try { await recStream(); } catch (e) { $('#recMsg').textContent = "The in-app camera couldn't start. Tap Phone camera below instead."; }
+  rec.busy = false;
+});
 async function finishRec(hitLimit) {
   if (rec.busy) return; rec.busy = true;
   clearInterval(rec.timer); await segStop(); rec.on = false;
@@ -712,6 +765,7 @@ async function finishRec(hitLimit) {
 $('#recGo').addEventListener('click', () => {
   if (rec.busy) return;
   if (!rec.stream) { $('#recMsg').textContent = "The camera isn't on yet. Tap Phone camera below instead."; return; }
+  if (rec.mode === 'photo') return takePhoto();
   if (rec.on) return finishRec(false);
   try { rec.thumb = rec.thumb || snap($('#recVideo')); segStart(); } catch (e) { $('#recMsg').textContent = "Recording couldn't start here. Tap Phone camera below instead."; return; }
   rec.on = true; $('#recMsg').textContent = '';
@@ -726,12 +780,12 @@ $('#recFlip').addEventListener('click', async () => {
   catch (e) { $('#recMsg').textContent = "Couldn't switch cameras."; rec.facing = rec.facing === 'user' ? 'environment' : 'user'; try { await recStream(); if (was) segStart(); } catch (x) {} }
   rec.paused = false; rec.busy = false;
 });
-$('#recNative').addEventListener('click', () => { const id = rec.channelId; $('#dlgRec').close(); startPick(id, true); });
+$('#recNative').addEventListener('click', () => { const id = rec.channelId; const mode = rec.mode; $('#dlgRec').close(); startPick(id, mode === 'photo' ? 'photo' : true); });
 $('#recClose').addEventListener('click', () => $('#dlgRec').close());
 $('#dlgRec').addEventListener('close', () => {
   clearInterval(rec.timer); rec.on = false;
   if (rec.mr && rec.mr.state !== 'inactive') { rec.mr.onstop = null; try { rec.mr.stop(); } catch (e) {} }
-  rec.mr = null; recStopStream(); $('#recVideo').srcObject = null; $('#dlgRec').classList.remove('live');
+  rec.mr = null; recStopStream(); $('#recVideo').srcObject = null; $('#dlgRec').classList.remove('live'); rec.busy = false;
 });
 
 /* ---------- player ---------- */
@@ -749,23 +803,27 @@ async function loadPart(i, autoplay) {
   if (playing !== p) return;
   if (p.url) URL.revokeObjectURL(p.url);
   p.part = i; p.url = URL.createObjectURL(p.blobs[i]);
-  const v = $('#playVideo'); v.src = p.url; if (autoplay) v.play().catch(() => {});
+  const photo = e.kind === 'photo', v = $('#playVideo'), im = $('#playImg');
+  v.classList.toggle('hide', photo); im.classList.toggle('hide', !photo);
+  if (photo) im.src = p.url; else { v.src = p.url; if (autoplay) v.play().catch(() => {}); }
 }
 async function openPlay(id) {
   const e = state.entries.find(x => x.id === id); if (!e) return;
   const c = chById(e.channelId), err = $('#playErr'); err.textContent = '';
   const n = e.parts ? e.parts.length : 1;
   $('#playTitle').textContent = `Day ${dayNum(e.channelId, e.date)} · ${fmtDay(fromKey(e.date))}`;
-  $('#playMeta').textContent = `${c ? c.name + ' · ' : ''}${fmtTime(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}${n > 1 ? ` · ${n} parts, played back to back` : ''}`;
+  $('#playMeta').textContent = `${c ? c.name + ' · ' : ''}${fmtTime(e.createdAt)}${e.kind === 'photo' ? ' · Photo' : e.duration ? ' · ' + fmtDur(e.duration) : ''} · ${fmtSize(e.size)}${n > 1 ? ` · ${n} parts, played back to back` : ''}`;
   $('#playNote').value = e.note || '';
-  const del = $('#playDelete'); del.textContent = 'Delete clip'; del.dataset.armed = '';
+  const del = $('#playDelete'); del.textContent = e.kind === 'photo' ? 'Delete photo' : 'Delete clip'; del.dataset.armed = '';
+  $('#playImg').alt = `Photo from ${fmtDay(fromKey(e.date))}`;
   playing = { entry: e, part: 0, blobs: [] };
   $('#dlgPlay').showModal();
-  try { await loadPart(0, false); } catch (x) { err.textContent = "This clip's video file isn't on this device anymore."; }
+  try { await loadPart(0, false); } catch (x) { err.textContent = "This file isn't on this device anymore."; }
 }
 $('#playVideo').addEventListener('ended', () => { if (playing && playing.entry.parts && playing.part + 1 < playing.entry.parts.length) loadPart(playing.part + 1, true).catch(() => {}); });
 $('#dlgPlay').addEventListener('close', async () => {
   const v = $('#playVideo'); try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e) {}
+  $('#playImg').removeAttribute('src');
   if (!playing) return;
   if (playing.url) URL.revokeObjectURL(playing.url);
   const e = playing.entry, note = $('#playNote').value.trim(); playing = null;
@@ -775,7 +833,7 @@ $('#playDelete').addEventListener('click', async ev => {
   const b = ev.currentTarget;
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to delete'; return; }
   const e = playing.entry;
-  try { await store.del('entries', e.id); } catch (x) { $('#playErr').textContent = "Couldn't delete that clip. Try again."; return; }
+  try { await store.del('entries', e.id); } catch (x) { $('#playErr').textContent = "Couldn't delete that. Try again."; return; }
   await removeVideo(e.id, e.parts ? e.parts.length : 1);
   state.entries = state.entries.filter(x => x !== e);
   $('#dlgPlay').close(); route();
@@ -791,7 +849,7 @@ $('#playShare').addEventListener('click', async () => {
     for (let i = 0; i < n; i++) {
       if (!p.blobs[i]) p.blobs[i] = await partBlob(e, i);
       const type = e.parts ? e.parts[i].type : e.type;
-      const ext = (e.name && e.name.includes('.')) ? e.name.split('.').pop() : (type.includes('quicktime') ? 'mov' : type.includes('webm') ? 'webm' : 'mp4');
+      const ext = (e.name && e.name.includes('.')) ? e.name.split('.').pop() : (type.includes('quicktime') ? 'mov' : type.includes('webm') ? 'webm' : type.includes('png') ? 'png' : type.startsWith('image/') ? 'jpg' : 'mp4');
       files.push(new File([p.blobs[i]], `${base}${n > 1 ? '-part' + (i + 1) : ''}.${ext}`, { type }));
     }
     if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files }); return; }
@@ -837,7 +895,7 @@ async function openSettings() {
   try { if (await navigator.storage.persisted()) kept = 'Yes'; } catch (e) {}
   const bytes = state.entries.reduce((n, e) => n + (e.size || 0), 0);
   $('#setRows').innerHTML = `
-    <div><span>Videos saved</span><span>${state.entries.length}${bytes ? ' · ' + fmtSize(bytes) : ''}</span></div>
+    <div><span>Videos and photos saved</span><span>${state.entries.length}${bytes ? ' · ' + fmtSize(bytes) : ''}</span></div>
     ${used ? `<div><span>Space Dailies is using</span><span>${used}</span></div><div><span>Space it can still use</span><span>about ${free}</span></div>` : ''}
     <div><span>Protected from automatic cleanup</span><span>${store.durable ? kept : 'No, preview mode'}</span></div>`;
   $('#setInstall').classList.toggle('hide', standalone);
